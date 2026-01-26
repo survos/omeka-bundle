@@ -10,10 +10,19 @@ composer require survos/omeka-bundle
 
 ```yaml
 # .env
-OMEKA_API_URL=https://your-omeka.org/api
-OMEKA_KEY_IDENTITY=your_key_identity
-OMEKA_KEY_CREDENTIAL=your_key_credential
+OMEKA_API_URL=https://dev.omeka.org/omeka-s-sandbox/api/
+OMEKA_KEY_IDENTITY=demo1@example.com
+OMEKA_KEY_CREDENTIAL=Password1!
 ```
+
+## Omeka S Sandbox
+URL: https://dev.omeka.org/omeka-s-sandbox/
+API endpoint: https://dev.omeka.org/omeka-s-sandbox/api/
+Demo accounts (for write access):
+
+* demo1@example.com / Password1!
+* demo2@example.com / Password2@
+* demo3@example.com / Password3#
 
 ## Usage
 

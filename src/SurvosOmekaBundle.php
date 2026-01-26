@@ -24,17 +24,20 @@ final class SurvosOmekaBundle extends AbstractBundle
 
     public function loadExtension(array $config, ContainerConfigurator $container, ContainerBuilder $builder): void
     {
-        $services = $container->services()
-            ->defaults()
-            ->autowire()
-            ->autoconfigure();
+        $builder->autowire(OmekaClient::class)
+            ->setAutoconfigured(true);
 
-        $services->set(OmekaClient::class);
-        $services->set(OmekaCreateItemCommand::class);
-        $services->set(OmekaCustomVocabTermsCommand::class);
-        $services->set(OmekaListItemsCommand::class);
-        $services->set(OmekaListPropertiesCommand::class);
-        $services->set(OmekaListResourceTemplatesCommand::class);
-        $services->set(OmekaListVocabulariesCommand::class);
+        foreach ([
+            OmekaCreateItemCommand::class,
+            OmekaCustomVocabTermsCommand::class,
+            OmekaListItemsCommand::class,
+            OmekaListPropertiesCommand::class,
+            OmekaListResourceTemplatesCommand::class,
+            OmekaListVocabulariesCommand::class,
+        ] as $commandClass) {
+            $builder->autowire($commandClass)
+                ->setAutoconfigured(true)
+                ->addTag('console.command');
+        }
     }
 }
