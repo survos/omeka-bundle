@@ -1,0 +1,4 @@
+services:
+    Survos\OmekaBundle\Client\OmekaClient:
+        autowire: true
+        autoconfigure: true
