@@ -20,15 +20,13 @@ services:
     ports:
       - "8088:8080"
     environment:
-      OMEKA_ADMIN_EMAIL: admin@example.com
-      OMEKA_ADMIN_PASSWORD: change-me
+      OMEKA_ADMIN_EMAIL: admin@admin.com
+      OMEKA_ADMIN_PASSWORD: admin
       OMEKA_ADMIN_NAME: Sandbox Admin
       OMEKA_SITE_TITLE: Omeka Sandbox Clone
       OMEKA_TIMEZONE: UTC
       OMEKA_LOCALE: en_US
       # these are tied to the email/password above
-      OMEKA_LOCAL_KEY_IDENTITY: a0LJM3VockogP8YnawwIJXkc5A8Bzy2f
-      OMEKA_LOCAL_KEY_CREDENTIAL: oD8YS6C3wwvaf656v0y3OLDL2UAZb4AG
       DB_HOST: db
       DB_NAME: omeka
       DB_USER: omeka

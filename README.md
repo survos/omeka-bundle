@@ -189,7 +189,7 @@ For write access, log into the sandbox UI, create an API key (not your password)
 ## Sync Command
 
 ```bash
-bin/console omeka:sync remote local -v
+bin/console omeka:sync remote local --with-vocabularies --with-properties --with-templates --with-sites --with-item-sets --with-items --with-media --with-site-items --with-site-pages -v
 ```
 
 ## License

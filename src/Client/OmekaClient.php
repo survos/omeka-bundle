@@ -16,8 +16,10 @@ use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Component\Mime\Part\Multipart\FormDataPart;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use function array_filter;
+use function array_keys;
 use function array_map;
 use function array_merge;
+use function array_values;
 use function basename;
 use function count;
 use function explode;
@@ -27,6 +29,7 @@ use function is_int;
 use function is_string;
 use function json_encode;
 use function rtrim;
+use function str_starts_with;
 use function str_ends_with;
 use function substr;
 use function trim;
@@ -56,6 +59,7 @@ final class OmekaClient
         ?int $resourceClassId = null,
         ?int $itemSetId = null,
         ?bool $isPublic = null,
+        ?int $siteId = null,
         int $page = 1,
         int $perPage = 25,
         string $sortBy = 'id',
@@ -66,6 +70,7 @@ final class OmekaClient
             'resource_class_id' => $resourceClassId,
             'item_set_id' => $itemSetId,
             'is_public' => $isPublic,
+            'site_id' => $siteId,
             'page' => $page,
             'per_page' => $perPage,
             'sort_by' => $sortBy,
@@ -129,6 +134,8 @@ final class OmekaClient
         ?int $templateId = null,
         ?int $classId = null,
         ?int $itemSetId = null,
+        ?array $itemSetIds = null,
+        ?array $siteIds = null,
         ?array $mediaFiles = null,
         ?bool $isPublic = null,
     ): Item {
@@ -140,8 +147,21 @@ final class OmekaClient
         if ($classId !== null) {
             $payload['o:resource_class'] = ['o:id' => $classId];
         }
+        $itemSetRefs = [];
         if ($itemSetId !== null) {
-            $payload['o:item_set'] = [['o:id' => $itemSetId]];
+            $itemSetRefs[] = ['o:id' => $itemSetId];
+        }
+        if ($itemSetIds !== null) {
+            foreach ($itemSetIds as $id) {
+                $itemSetRefs[] = ['o:id' => $id];
+            }
+        }
+        if ($itemSetRefs !== []) {
+            $payload['o:item_set'] = $itemSetRefs;
+        }
+
+        if ($siteIds !== null) {
+            $payload['o:site'] = array_map(static fn(int $id): array => ['o:id' => $id], $siteIds);
         }
         if ($isPublic !== null) {
             $payload['o:is_public'] = $isPublic;
@@ -165,6 +185,34 @@ final class OmekaClient
             $propertyId = $this->getPropertyId($term);
             $current[$term] = $this->formatPropertyValues($value, $propertyId);
         }
+
+        $data = $this->put("items/{$id}", $current);
+        return Item::fromArray($data);
+    }
+
+    public function updateItemSites(int $id, array $siteIds): Item
+    {
+        $current = $this->get("items/{$id}");
+        $currentSites = $current['o:site'] ?? [];
+        $merged = [];
+
+        foreach ($currentSites as $site) {
+            $siteId = $site['o:id'] ?? null;
+            if (is_int($siteId)) {
+                $merged[$siteId] = true;
+            }
+        }
+
+        foreach ($siteIds as $siteId) {
+            if (is_int($siteId)) {
+                $merged[$siteId] = true;
+            }
+        }
+
+        $current['o:site'] = array_map(
+            static fn(int $siteId): array => ['o:id' => $siteId],
+            array_keys($merged),
+        );
 
         $data = $this->put("items/{$id}", $current);
         return Item::fromArray($data);
@@ -204,6 +252,35 @@ final class OmekaClient
         return Media::fromArray($data);
     }
 
+    public function createMediaFromUrl(
+        int $itemId,
+        string $url,
+        ?array $metadata = null,
+        ?string $title = null,
+    ): Media {
+        $payload = [
+            'o:ingester' => 'url',
+            'o:item' => ['o:id' => $itemId],
+            'o:source' => $url,
+            'ingest_url' => $url,
+        ];
+
+        if ($title !== null) {
+            $payload['dcterms:title'] = [[
+                'property_id' => $this->getPropertyId('dcterms:title'),
+                'type' => 'literal',
+                '@value' => $title,
+            ]];
+        }
+
+        if ($metadata !== null) {
+            $payload = array_merge($payload, $this->buildPayload($metadata));
+        }
+
+        $data = $this->post('media', $payload);
+        return Media::fromArray($data);
+    }
+
     // ========== RESOURCE TEMPLATES ==========
 
     public function getResourceTemplates(): array
@@ -225,6 +302,52 @@ final class OmekaClient
             return null;
         }
         return ResourceTemplate::fromArray($result->results[0]);
+    }
+
+    /**
+     * @param array<int, array{
+     *     property_id: int,
+     *     required: bool,
+     *     private: bool,
+     *     data_types: string[]
+     * }> $properties
+     */
+    public function createResourceTemplate(
+        string $label,
+        ?int $resourceClassId,
+        ?int $titlePropertyId,
+        ?int $descriptionPropertyId,
+        array $properties,
+    ): ResourceTemplate {
+        $payload = [
+            'o:label' => $label,
+        ];
+
+        if ($resourceClassId !== null) {
+            $payload['o:resource_class'] = ['o:id' => $resourceClassId];
+        }
+        if ($titlePropertyId !== null) {
+            $payload['o:title_property'] = ['o:id' => $titlePropertyId];
+        }
+        if ($descriptionPropertyId !== null) {
+            $payload['o:description_property'] = ['o:id' => $descriptionPropertyId];
+        }
+
+        $payload['o:resource_template_property'] = array_values(array_map(
+            static function (array $property): array {
+                return [
+                    'o:property' => ['o:id' => $property['property_id']],
+                    'o:is_required' => $property['required'],
+                    'o:is_private' => $property['private'],
+                    'o:data_type' => $property['data_types'],
+                ];
+            },
+            $properties,
+        ));
+
+        $data = $this->post('resource_templates', $payload);
+
+        return ResourceTemplate::fromArray($data);
     }
 
     // ========== RESOURCE CLASSES ==========
@@ -355,6 +478,11 @@ final class OmekaClient
         return $this->search('sites', ['per_page' => 100])->results;
     }
 
+    public function getSite(int $id): array
+    {
+        return $this->get("sites/{$id}");
+    }
+
     public function createSite(string $slug, string $title, ?string $theme = null, bool $isPublic = true): array
     {
         $payload = [
@@ -368,6 +496,26 @@ final class OmekaClient
         }
 
         return $this->post('sites', $payload);
+    }
+
+    public function updateSite(int $id, array $payload): array
+    {
+        return $this->put("sites/{$id}", $payload);
+    }
+
+    public function getSitePages(int $siteId, int $page = 1, int $perPage = 100): SearchResult
+    {
+        return $this->search('site_pages', [
+            'site_id' => $siteId,
+            'page' => $page,
+            'per_page' => $perPage,
+        ]);
+    }
+
+    public function createSitePage(int $siteId, array $payload): array
+    {
+        $payload['o:site'] = ['o:id' => $siteId];
+        return $this->post('site_pages', $payload);
     }
 
     // ========== CUSTOM VOCABS ==========
@@ -405,6 +553,70 @@ final class OmekaClient
     public function getItemSet(int $id): array
     {
         return $this->get("item_sets/{$id}");
+    }
+
+    public function createItemSet(array $properties, ?bool $isPublic = null): array
+    {
+        $payload = $this->buildPayload($properties);
+
+        if ($isPublic !== null) {
+            $payload['o:is_public'] = $isPublic;
+        }
+
+        return $this->post('item_sets', $payload);
+    }
+
+    public function filterItemSetsByProperty(
+        string $property,
+        string $value,
+        string $type = 'eq',
+        int $page = 1,
+    ): SearchResult {
+        $propertyId = $this->getPropertyId($property);
+
+        $params = array_filter([
+            'property' => [
+                [
+                    'property' => $propertyId,
+                    'type' => $type,
+                    'text' => $value,
+                ],
+            ],
+            'page' => $page,
+        ], fn($v) => $v !== null);
+
+        return $this->search('item_sets', $params);
+    }
+
+    public function getMedia(int $page = 1, int $perPage = 25, ?int $itemId = null): SearchResult
+    {
+        return $this->search('media', array_filter([
+            'page' => $page,
+            'per_page' => $perPage,
+            'item_id' => $itemId,
+        ], fn($v) => $v !== null));
+    }
+
+    public function filterMediaByProperty(
+        string $property,
+        string $value,
+        string $type = 'eq',
+        int $page = 1,
+    ): SearchResult {
+        $propertyId = $this->getPropertyId($property);
+
+        $params = array_filter([
+            'property' => [
+                [
+                    'property' => $propertyId,
+                    'type' => $type,
+                    'text' => $value,
+                ],
+            ],
+            'page' => $page,
+        ], fn($v) => $v !== null);
+
+        return $this->search('media', $params);
     }
 
     // ========== PAYLOAD BUILDING ==========
