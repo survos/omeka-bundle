@@ -8,58 +8,84 @@ Symfony HttpClient wrapper for the Omeka-S REST API. PHP 8.4+, Symfony 7/8.
 composer require survos/omeka-bundle
 ```
 
-```yaml
+```bash
 # .env
-OMEKA_API_URL=https://dev.omeka.org/omeka-s-sandbox/api/
-OMEKA_KEY_IDENTITY=demo1@example.com
-OMEKA_KEY_CREDENTIAL=Password1!
+OMEKA_LOCAL_API_URL=http://localhost:8088/api
+OMEKA_LOCAL_KEY_IDENTITY=
+OMEKA_LOCAL_KEY_CREDENTIAL=
+OMEKA_REMOTE_KEY_IDENTITY=
+OMEKA_REMOTE_KEY_CREDENTIAL=
+```
+
+```yaml
+# config/packages/survos_omeka.yaml
+survos_omeka:
+  clients:
+    local:
+      api_url: '%env(OMEKA_LOCAL_API_URL)%'
+      key_identity: '%env(default::OMEKA_LOCAL_KEY_IDENTITY)%'
+      key_credential: '%env(default::OMEKA_LOCAL_KEY_CREDENTIAL)%'
+    remote:
+      api_url: 'https://dev.omeka.org/omeka-s-sandbox/api'
+      key_identity: '%env(default::OMEKA_REMOTE_KEY_IDENTITY)%'
+      key_credential: '%env(default::OMEKA_REMOTE_KEY_CREDENTIAL)%'
 ```
 
 ## Omeka S Sandbox
-URL: https://dev.omeka.org/omeka-s-sandbox/
-API endpoint: https://dev.omeka.org/omeka-s-sandbox/api/
-Demo accounts (for write access):
+- Sandbox UI: https://dev.omeka.org/omeka-s-sandbox/
+- Admin UI (redirects to login): https://dev.omeka.org/omeka-s-sandbox/admin
+- API endpoint: https://dev.omeka.org/omeka-s-sandbox/api/
+- Demo accounts (UI login only; not API keys):
+  - demo1@example.com / Password1!
+  - demo2@example.com / Password2@
+  - demo3@example.com / Password3#
 
-* demo1@example.com / Password1!
-* demo2@example.com / Password2@
-* demo3@example.com / Password3#
+To write, you must create an API key for the logged-in user and set it in `.env`:
+
+- Omeka S user manual (API keys): https://omeka.org/s/docs/user-manual/admin/users/#api-keys
+- In the sandbox UI: Users → edit your user → API keys → add a key → save
+- Copy the **Key identity** and **Key credential** into `OMEKA_KEY_IDENTITY` and `OMEKA_KEY_CREDENTIAL`
 
 ## Usage
 
 ```php
 use Survos\OmekaBundle\Client\OmekaClient;
+use Symfony\Component\DependencyInjection\Attribute\Target;
 
 class ArchiveService
 {
-    public function __construct(private OmekaClient $omeka) {}
+    public function __construct(
+        #[Target('omeka.local')] private OmekaClient $localOmeka,
+        #[Target('omeka.remote')] private OmekaClient $remoteOmeka,
+    ) {}
     
     public function import(): void
     {
         // Read
-        $items = $this->omeka->getItems(resourceTemplateId: 5, perPage: 50);
-        $item = $this->omeka->getItem(123);
-        $templates = $this->omeka->getResourceTemplates();
+        $items = $this->remoteOmeka->getItems(resourceTemplateId: 5, perPage: 50);
+        $item = $this->remoteOmeka->getItem(123);
+        $templates = $this->remoteOmeka->getResourceTemplates();
         
         // Search
-        $results = $this->omeka->searchItems('civil war', fulltextSearch: true);
-        $filtered = $this->omeka->filterItemsByProperty('dcterms:creator', 'Smith', 'in');
+        $results = $this->remoteOmeka->searchItems('civil war', fulltextSearch: true);
+        $filtered = $this->remoteOmeka->filterItemsByProperty('dcterms:creator', 'Smith', 'in');
         
         // Create
-        $newItem = $this->omeka->createItem([
+        $newItem = $this->localOmeka->createItem([
             'dcterms:title' => 'Letter from John Smith',
             'dcterms:date' => '1862-04-15',
             'dcterms:type' => 'Correspondence',
         ], templateId: 5);
         
         // With media
-        $itemWithMedia = $this->omeka->createItem($metadata, templateId: 5, mediaFiles: [
+        $itemWithMedia = $this->localOmeka->createItem($metadata, templateId: 5, mediaFiles: [
             '/path/to/scan.tiff',
             ['path' => '/path/to/ocr.pdf', 'title' => 'OCR Text'],
         ]);
         
         // Update / Delete
-        $this->omeka->updateItem(123, ['dcterms:title' => 'Updated Title']);
-        $this->omeka->deleteItem(123);
+        $this->localOmeka->updateItem(123, ['dcterms:title' => 'Updated Title']);
+        $this->localOmeka->deleteItem(123);
     }
 }
 ```
@@ -129,6 +155,8 @@ $item = $this->omeka->createItem($aiMetadata, templateId: 5, mediaFiles: [$scanP
 | `addMediaToItem(int $itemId, string $path, ?array $metadata)` | Attach media |
 | `getItemSets(int $page, int $perPage)` | List item sets |
 | `payloadBuilder(?int $templateId)` | Get fluent payload builder |
+| `getSites()` | List sites |
+| `createSite(string $slug, string $title, ?string $theme, bool $isPublic)` | Create site |
 
 ## Item Model
 
@@ -152,11 +180,17 @@ $item->getPropertyValues('dcterms:subject');   // string[] - all values
 
 ```php
 // Uses public sandbox - resets Mon/Wed/Fri/Sun
-// Set OMEKA_API_URL=https://dev.omeka.org/omeka-s-sandbox/api
-$items = $this->omeka->getItems(); // Anonymous read access
+// Remote client points to https://dev.omeka.org/omeka-s-sandbox/api
+$items = $this->remoteOmeka->getItems(); // Anonymous read access
 ```
 
-For write access, log into the sandbox UI, create an API key, and set credentials.
+For write access, log into the sandbox UI, create an API key (not your password), and set credentials.
+
+## Sync Command
+
+```bash
+bin/console omeka:sync remote local -v
+```
 
 ## License
 

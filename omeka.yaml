@@ -1,0 +1,50 @@
+services:
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secret
+      MYSQL_DATABASE: omeka
+      MYSQL_USER: omeka
+      MYSQL_PASSWORD: omeka_secret
+    volumes:
+      - omeka_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  omeka:
+    image: erseco/alpine-omeka-s:latest
+    ports:
+      - "8088:8080"
+    environment:
+      OMEKA_ADMIN_EMAIL: admin@example.com
+      OMEKA_ADMIN_PASSWORD: change-me
+      OMEKA_ADMIN_NAME: Sandbox Admin
+      OMEKA_SITE_TITLE: Omeka Sandbox Clone
+      OMEKA_TIMEZONE: UTC
+      OMEKA_LOCALE: en_US
+      # these are tied to the email/password above
+      OMEKA_LOCAL_KEY_IDENTITY: a0LJM3VockogP8YnawwIJXkc5A8Bzy2f
+      OMEKA_LOCAL_KEY_CREDENTIAL: oD8YS6C3wwvaf656v0y3OLDL2UAZb4AG
+      DB_HOST: db
+      DB_NAME: omeka
+      DB_USER: omeka
+      DB_PASSWORD: omeka_secret
+      APPLICATION_ENV: development
+      OMEKA_MODULES: "CustomVocab CSVImport ValueSuggest Mapping"
+      OMEKA_THEMES: "default"
+    volumes:
+      - omeka_files:/var/www/html/volume
+      - omeka_logs:/var/www/html/logs
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  omeka_db:
+  omeka_files:
+  omeka_logs:

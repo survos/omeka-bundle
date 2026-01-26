@@ -15,6 +15,22 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Component\Mime\Part\Multipart\FormDataPart;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
+use function array_filter;
+use function array_map;
+use function array_merge;
+use function basename;
+use function count;
+use function explode;
+use function in_array;
+use function is_array;
+use function is_int;
+use function is_string;
+use function json_encode;
+use function rtrim;
+use function str_ends_with;
+use function substr;
+use function trim;
+use function trigger_error;
 
 final class OmekaClient
 {
@@ -114,6 +130,7 @@ final class OmekaClient
         ?int $classId = null,
         ?int $itemSetId = null,
         ?array $mediaFiles = null,
+        ?bool $isPublic = null,
     ): Item {
         $payload = $this->buildPayload($properties, $templateId);
 
@@ -125,6 +142,9 @@ final class OmekaClient
         }
         if ($itemSetId !== null) {
             $payload['o:item_set'] = [['o:id' => $itemSetId]];
+        }
+        if ($isPublic !== null) {
+            $payload['o:is_public'] = $isPublic;
         }
 
         if ($mediaFiles !== null && count($mediaFiles) > 0) {
@@ -207,6 +227,13 @@ final class OmekaClient
         return ResourceTemplate::fromArray($result->results[0]);
     }
 
+    // ========== RESOURCE CLASSES ==========
+
+    public function getResourceClasses(): array
+    {
+        return $this->search('resource_classes', ['per_page' => 100])->results;
+    }
+
     /**
      * @return array<string, array{property_id: int, types: string[]}>
      */
@@ -284,6 +311,63 @@ final class OmekaClient
     public function getVocabularies(): array
     {
         return $this->search('vocabularies', ['per_page' => 100])->results;
+    }
+
+    public function createVocabulary(string $prefix, string $label, ?string $namespaceUri = null): array
+    {
+        $payload = [
+            'o:prefix' => $prefix,
+            'o:label' => $label,
+        ];
+
+        if ($namespaceUri !== null) {
+            $payload['o:namespace_uri'] = $namespaceUri;
+        }
+
+        return $this->post('vocabularies', $payload);
+    }
+
+    public function createProperty(
+        string $term,
+        string $label,
+        string $localName,
+        ?string $comment,
+        int $vocabularyId,
+    ): array {
+        $payload = [
+            'o:term' => $term,
+            'o:label' => $label,
+            'o:local_name' => $localName,
+            'o:vocabulary' => ['o:id' => $vocabularyId],
+        ];
+
+        if ($comment !== null) {
+            $payload['o:comment'] = $comment;
+        }
+
+        return $this->post('properties', $payload);
+    }
+
+    // ========== SITES ==========
+
+    public function getSites(): array
+    {
+        return $this->search('sites', ['per_page' => 100])->results;
+    }
+
+    public function createSite(string $slug, string $title, ?string $theme = null, bool $isPublic = true): array
+    {
+        $payload = [
+            'o:slug' => $slug,
+            'o:title' => $title,
+            'o:is_public' => $isPublic,
+        ];
+
+        if ($theme !== null) {
+            $payload['o:theme'] = $theme;
+        }
+
+        return $this->post('sites', $payload);
     }
 
     // ========== CUSTOM VOCABS ==========
@@ -457,7 +541,17 @@ final class OmekaClient
     private function requireAuth(): void
     {
         if ($this->keyIdentity === null || $this->keyCredential === null) {
-            throw new OmekaApiException('Authentication required. Set OMEKA_KEY_IDENTITY and OMEKA_KEY_CREDENTIAL.');
+            $base = $this->apiUrl;
+            if (str_ends_with($base, '/api')) {
+                $base = substr($base, 0, -4);
+            }
+
+            $adminUrl = $base . '/admin/user/1/edit#edit-keys';
+
+            throw new OmekaApiException(
+                'Authentication required. Set OMEKA_KEY_IDENTITY and OMEKA_KEY_CREDENTIAL. ' .
+                'Create an API key in the Omeka UI: ' . $adminUrl
+            );
         }
     }
 
@@ -471,6 +565,10 @@ final class OmekaClient
                 $value = ['value' => (string) $value];
             }
 
+            if (!is_array($value)) {
+                continue;
+            }
+
             // Determine type
             $type = $value['type'] ?? $templateDef['types'][0] ?? 'literal';
 
@@ -480,23 +578,33 @@ final class OmekaClient
                 continue;
             }
 
-            $formatted[] = match ($type) {
+            $payload = match ($type) {
                 'uri' => [
                     'property_id' => $propertyId,
                     'type' => 'uri',
-                    '@id' => $value['value'] ?? $value['@id'],
+                    '@id' => $value['value'] ?? $value['@id'] ?? null,
                 ],
                 'resource', 'resource:item', 'resource:media', 'resource:itemset' => [
                     'property_id' => $propertyId,
                     'type' => $type,
-                    'value_resource_id' => (int) ($value['value'] ?? $value['value_resource_id'] ?? $value['@id']),
+                    'value_resource_id' => $value['value'] ?? $value['value_resource_id'] ?? $value['@id'] ?? null,
                 ],
                 default => [
                     'property_id' => $propertyId,
                     'type' => $type,
-                    '@value' => $value['value'] ?? $value['@value'],
+                    '@value' => $value['value'] ?? $value['@value'] ?? null,
                 ],
             };
+
+            if (($payload['@value'] ?? $payload['@id'] ?? $payload['value_resource_id'] ?? null) === null) {
+                continue;
+            }
+
+            if (isset($payload['value_resource_id'])) {
+                $payload['value_resource_id'] = (int) $payload['value_resource_id'];
+            }
+
+            $formatted[] = $payload;
         }
 
         return $formatted;
