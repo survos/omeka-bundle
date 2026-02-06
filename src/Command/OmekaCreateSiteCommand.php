@@ -6,14 +6,12 @@ namespace Survos\OmekaBundle\Command;
 
 use RuntimeException;
 use Survos\OmekaBundle\Client\OmekaClient;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use function is_string;
-use function rtrim;
 use function sprintf;
 use function str_ends_with;
 use function substr;
@@ -23,11 +21,7 @@ final class OmekaCreateSiteCommand
 {
     public function __construct(
         private OmekaClient $omeka,
-        #[Autowire('%env(OMEKA_API_URL)%')]
-        private string $apiUrl,
-    )
-    {
-        $this->apiUrl = rtrim($this->apiUrl, '/');
+    ) {
     }
 
     public function __invoke(
@@ -65,7 +59,7 @@ final class OmekaCreateSiteCommand
 
     private function adminSiteUrl(int $siteId): string
     {
-        $base = $this->apiUrl;
+        $base = $this->omeka->getApiUrl();
         if (str_ends_with($base, '/api')) {
             $base = substr($base, 0, -4);
         }
@@ -75,7 +69,7 @@ final class OmekaCreateSiteCommand
 
     private function publicSiteUrl(string $slug): string
     {
-        $base = $this->apiUrl;
+        $base = $this->omeka->getApiUrl();
         if (str_ends_with($base, '/api')) {
             $base = substr($base, 0, -4);
         }

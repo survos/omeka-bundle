@@ -11,11 +11,12 @@ use Survos\OmekaBundle\Model\Property;
 use Survos\OmekaBundle\Model\ResourceTemplate;
 use Survos\OmekaBundle\Model\SearchResult;
 use Survos\OmekaBundle\PayloadBuilder\ItemPayloadBuilder;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Component\Mime\Part\Multipart\FormDataPart;
+use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use function array_filter;
+use function array_key_last;
 use function array_keys;
 use function array_map;
 use function array_merge;
@@ -27,8 +28,11 @@ use function in_array;
 use function is_array;
 use function is_int;
 use function is_string;
+use function json_decode;
 use function json_encode;
 use function rtrim;
+use function sprintf;
+use function str_contains;
 use function str_starts_with;
 use function str_ends_with;
 use function substr;
@@ -42,14 +46,16 @@ final class OmekaClient
 
     public function __construct(
         private HttpClientInterface $httpClient,
-        #[Autowire('%env(OMEKA_API_URL)%')]
         private string $apiUrl,
-        #[Autowire('%env(default::OMEKA_KEY_IDENTITY)%')]
         private ?string $keyIdentity = null,
-        #[Autowire('%env(default::OMEKA_KEY_CREDENTIAL)%')]
         private ?string $keyCredential = null,
     ) {
         $this->apiUrl = rtrim($this->apiUrl, '/');
+    }
+
+    public function getApiUrl(): string
+    {
+        return $this->apiUrl;
     }
 
     // ========== ITEMS ==========
@@ -350,6 +356,52 @@ final class OmekaClient
         return ResourceTemplate::fromArray($data);
     }
 
+    /**
+     * @param array<int, array{
+     *     property_id: int,
+     *     required: bool,
+     *     private: bool,
+     *     data_types: string[]
+     * }> $properties
+     */
+    public function updateResourceTemplate(
+        int $id,
+        string $label,
+        ?int $resourceClassId,
+        ?int $titlePropertyId,
+        ?int $descriptionPropertyId,
+        array $properties,
+    ): ResourceTemplate {
+        $current = $this->get("resource_templates/{$id}");
+        $current['o:label'] = $label;
+
+        $current['o:resource_class'] = $resourceClassId !== null
+            ? ['o:id' => $resourceClassId]
+            : null;
+        $current['o:title_property'] = $titlePropertyId !== null
+            ? ['o:id' => $titlePropertyId]
+            : null;
+        $current['o:description_property'] = $descriptionPropertyId !== null
+            ? ['o:id' => $descriptionPropertyId]
+            : null;
+
+        $current['o:resource_template_property'] = array_values(array_map(
+            static function (array $property): array {
+                return [
+                    'o:property' => ['o:id' => $property['property_id']],
+                    'o:is_required' => $property['required'],
+                    'o:is_private' => $property['private'],
+                    'o:data_type' => $property['data_types'],
+                ];
+            },
+            $properties,
+        ));
+
+        $data = $this->put("resource_templates/{$id}", $current);
+
+        return ResourceTemplate::fromArray($data);
+    }
+
     // ========== RESOURCE CLASSES ==========
 
     public function getResourceClasses(): array
@@ -457,18 +509,73 @@ final class OmekaClient
         ?string $comment,
         int $vocabularyId,
     ): array {
-        $payload = [
+        if ($vocabularyId <= 0) {
+            throw new OmekaApiException(sprintf('Invalid vocabulary id for property term: %s', $term));
+        }
+
+        $prefix = null;
+        $parts = explode(':', $term, 2);
+        if (count($parts) === 2 && $parts[0] !== '') {
+            $prefix = $parts[0];
+        }
+
+        $basePayload = [
             'o:term' => $term,
             'o:label' => $label,
             'o:local_name' => $localName,
-            'o:vocabulary' => ['o:id' => $vocabularyId],
         ];
 
         if ($comment !== null) {
-            $payload['o:comment'] = $comment;
+            $basePayload['o:comment'] = $comment;
         }
 
-        return $this->post('properties', $payload);
+        $payloadVariants = [];
+        $payloadBases = [$basePayload, array_diff_key($basePayload, ['o:term' => true])];
+
+        foreach ($payloadBases as $payloadBase) {
+            $payloadVariants[] = $payloadBase + ['o:vocabulary' => ['o:id' => $vocabularyId]];
+            $payloadVariants[] = $payloadBase + ['o:vocabulary' => $vocabularyId];
+        }
+
+        if ($prefix !== null) {
+            foreach ($payloadBases as $payloadBase) {
+                $payloadVariants[] = $payloadBase + [
+                    'o:vocabulary' => ['o:id' => $vocabularyId, 'o:prefix' => $prefix],
+                ];
+                $payloadVariants[] = $payloadBase + [
+                    'o:vocabulary' => ['@id' => $this->apiUrl . '/vocabularies/' . $vocabularyId],
+                ];
+            }
+        }
+
+        $vocabularyResource = $this->get("vocabularies/{$vocabularyId}");
+        if (is_array($vocabularyResource)) {
+            foreach ($payloadBases as $payloadBase) {
+                $payloadVariants[] = $payloadBase + ['o:vocabulary' => $vocabularyResource];
+            }
+        }
+
+        $lastException = null;
+        foreach ($payloadVariants as $payload) {
+            try {
+                return $this->post('properties', $payload);
+            } catch (OmekaApiException $exception) {
+                $lastException = $exception;
+                if (!str_contains($exception->getMessage(), 'o:vocabulary')) {
+                    throw $exception;
+                }
+            }
+        }
+
+        if ($lastException !== null) {
+            $payloadDump = json_encode($payloadVariants[array_key_last($payloadVariants)]) ?: 'unencodable';
+            throw new OmekaApiException(
+                sprintf('Property create failed after retries. Payload: %s', $payloadDump),
+                previous: $lastException,
+            );
+        }
+
+        throw new OmekaApiException('Property create failed without a response.');
     }
 
     // ========== SITES ==========
@@ -688,7 +795,15 @@ final class OmekaClient
             'json' => $payload,
         ]);
 
-        return $response->toArray();
+        try {
+            return $response->toArray();
+        } catch (ClientExceptionInterface $exception) {
+            $details = $this->formatErrorDetails($exception->getResponse()->getContent(false));
+            throw new OmekaApiException(
+                sprintf('Omeka API POST %s failed: %s', $endpoint, $details),
+                previous: $exception,
+            );
+        }
     }
 
     private function postWithMedia(string $endpoint, array $payload, array $mediaFiles): array
@@ -738,6 +853,28 @@ final class OmekaClient
         ]);
     }
 
+    private function formatErrorDetails(?string $content): string
+    {
+        if (!is_string($content) || trim($content) === '') {
+            return 'empty response body';
+        }
+
+        $decoded = json_decode($content, true);
+        if (!is_array($decoded)) {
+            return $content;
+        }
+
+        if (isset($decoded['errors'])) {
+            return json_encode($decoded['errors']) ?: $content;
+        }
+
+        if (isset($decoded['message']) && is_string($decoded['message'])) {
+            return $decoded['message'];
+        }
+
+        return $content;
+    }
+
     private function authQuery(): array
     {
         if ($this->keyIdentity === null || $this->keyCredential === null) {
@@ -761,7 +898,7 @@ final class OmekaClient
             $adminUrl = $base . '/admin/user/1/edit#edit-keys';
 
             throw new OmekaApiException(
-                'Authentication required. Set OMEKA_KEY_IDENTITY and OMEKA_KEY_CREDENTIAL. ' .
+                'Authentication required. Configure key_identity and key_credential for the active Omeka client. ' .
                 'Create an API key in the Omeka UI: ' . $adminUrl
             );
         }

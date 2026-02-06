@@ -6,6 +6,7 @@ namespace Survos\OmekaBundle;
 
 use Survos\OmekaBundle\Client\OmekaClient;
 use Survos\OmekaBundle\Client\OmekaClientRegistry;
+use Survos\OmekaBundle\Command\OmekaCreateResourcesCommand;
 use Survos\OmekaBundle\Command\OmekaCreateSiteCommand;
 use Survos\OmekaBundle\Command\OmekaCreateItemCommand;
 use Survos\OmekaBundle\Command\OmekaCustomVocabTermsCommand;
@@ -49,6 +50,9 @@ final class SurvosOmekaBundle extends AbstractBundle
         if ($clients === []) {
             $builder->autowire(OmekaClient::class)
                 ->setAutoconfigured(true)
+                ->setArgument('$apiUrl', '%env(OMEKA_API_URL)%')
+                ->setArgument('$keyIdentity', '%env(default::OMEKA_KEY_IDENTITY)%')
+                ->setArgument('$keyCredential', '%env(default::OMEKA_KEY_CREDENTIAL)%')
                 ->addTag('omeka.client', ['name' => 'default']);
         }
 
@@ -81,6 +85,7 @@ final class SurvosOmekaBundle extends AbstractBundle
 
         foreach ([
             OmekaCreateItemCommand::class,
+            OmekaCreateResourcesCommand::class,
             OmekaCreateSiteCommand::class,
             OmekaCustomVocabTermsCommand::class,
             OmekaListItemsCommand::class,

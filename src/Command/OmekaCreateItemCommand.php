@@ -7,7 +7,6 @@ namespace Survos\OmekaBundle\Command;
 use JsonException;
 use RuntimeException;
 use Survos\OmekaBundle\Client\OmekaClient;
-use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
@@ -24,7 +23,6 @@ use function is_string;
 use function json_decode;
 use function ksort;
 use function preg_match;
-use function rtrim;
 use function sprintf;
 use function str_contains;
 use function str_ends_with;
@@ -35,11 +33,7 @@ final class OmekaCreateItemCommand
 {
     public function __construct(
         private OmekaClient $omeka,
-        #[Autowire('%env(OMEKA_API_URL)%')]
-        private string $apiUrl,
-    )
-    {
-        $this->apiUrl = rtrim($this->apiUrl, '/');
+    ) {
     }
 
     public function __invoke(
@@ -115,11 +109,6 @@ final class OmekaCreateItemCommand
         }
 
         $mediaFiles = $mediaFile !== null ? [$mediaFile] : null;
-
-        if (!$io->confirm('Persist item?', false)) {
-            $io->warning('Aborted before creating the item.');
-            return Command::SUCCESS;
-        }
 
         $item = $this->omeka->createItem(
             $properties,
@@ -265,7 +254,7 @@ final class OmekaCreateItemCommand
 
     private function adminItemUrl(int $itemId): string
     {
-        $base = $this->apiUrl;
+        $base = $this->omeka->getApiUrl();
         if (str_ends_with($base, '/api')) {
             $base = substr($base, 0, -4);
         }
@@ -275,7 +264,7 @@ final class OmekaCreateItemCommand
 
     private function itemUrl(int $itemId, ?string $siteSlug): string
     {
-        $base = $this->apiUrl;
+        $base = $this->omeka->getApiUrl();
         if (str_ends_with($base, '/api')) {
             $base = substr($base, 0, -4);
         }

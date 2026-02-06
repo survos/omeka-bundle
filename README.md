@@ -31,6 +31,186 @@ survos_omeka:
       key_credential: '%env(default::OMEKA_REMOTE_KEY_CREDENTIAL)%'
 ```
 
+## Dokku Deployment (Omeka S Image)
+
+Use the prebuilt Omeka S image for production and keep it separate from the Symfony app.
+
+1) Create a shared MySQL service and app:
+
+```bash
+dokku mysql:create omeka-db
+dokku apps:create kpa-omeka
+dokku mysql:link omeka-db kpa-omeka
+```
+
+2) Create a dedicated database and user for this app:
+
+```bash
+dokku mysql:enter omeka-db env | grep MYSQL_ROOT_PASSWORD
+dokku mysql:enter omeka-db mysql -uroot -p
+```
+
+```sql
+CREATE DATABASE kpa_omeka;
+CREATE USER 'kpa_omeka'@'%' IDENTIFIED BY 'kpa_omeka_secret';
+GRANT ALL PRIVILEGES ON kpa_omeka.* TO 'kpa_omeka'@'%';
+FLUSH PRIVILEGES;
+```
+
+3) Set Omeka env vars and deploy the image:
+
+```bash
+dokku config:set kpa-omeka \
+  OMEKA_ADMIN_EMAIL=admin@admin.com \
+  OMEKA_ADMIN_PASSWORD=admin \
+  OMEKA_ADMIN_NAME="KPA Admin" \
+  OMEKA_SITE_TITLE="KPA Omeka" \
+  OMEKA_TIMEZONE=UTC \
+  OMEKA_LOCALE=en_US \
+  DB_HOST=dokku-mysql-omeka-db \
+  DB_NAME=kpa_omeka \
+  DB_USER=kpa_omeka \
+  DB_PASSWORD=kpa_omeka_secret
+
+dokku git:from-image kpa-omeka erseco/alpine-omeka-s:latest
+dokku ps:rebuild kpa-omeka
+```
+
+4) Persist uploads and logs (optional but recommended):
+
+```bash
+mkdir -p /var/lib/dokku/data/storage/kpa-omeka/{omeka_files,omeka_logs}
+dokku storage:mount kpa-omeka /var/lib/dokku/data/storage/kpa-omeka/omeka_files:/var/www/html/volume
+dokku storage:mount kpa-omeka /var/lib/dokku/data/storage/kpa-omeka/omeka_logs:/var/www/html/logs
+```
+
+If you have a larger disk mounted, prefer mounting that location instead of `/var/lib/dokku/data/storage`:
+
+```bash
+mkdir -p /mnt/volume-1/omeka/kpa/files/config \
+  /mnt/volume-1/omeka/kpa/files/files \
+  /mnt/volume-1/omeka/kpa/files/modules \
+  /mnt/volume-1/omeka/kpa/files/themes \
+  /mnt/volume-1/omeka/kpa/logs
+chown -R 65534:65534 /mnt/volume-1/omeka/kpa/files /mnt/volume-1/omeka/kpa/logs
+chmod -R u+rwX,g+rwX /mnt/volume-1/omeka/kpa/files /mnt/volume-1/omeka/kpa/logs
+dokku storage:mount kpa-omeka /mnt/volume-1/omeka/kpa/files:/var/www/html/volume
+dokku storage:mount kpa-omeka /mnt/volume-1/omeka/kpa/logs:/var/www/html/logs
+```
+
+If permissions fail, confirm the container UID/GID and adjust:
+
+```bash
+dokku enter kpa-omeka web id
+```
+
+5) Set the domain and ports:
+
+```bash
+dokku domains:set kpa-omeka kpa-omeka.survos.com
+dokku ports:set kpa-omeka http:80:8080
+```
+
+6) Enable HTTPS (Let’s Encrypt):
+
+```bash
+dokku letsencrypt:set kpa-omeka email you@example.com
+dokku letsencrypt:enable kpa-omeka
+```
+
+7) Verify and troubleshoot:
+
+```bash
+dokku ps:report kpa-omeka
+dokku ports:report kpa-omeka
+dokku domains:report kpa-omeka
+dokku logs kpa-omeka --tail
+```
+
+If you see the default nginx page, the app is only exposed on port 8080. Fix with:
+
+```bash
+dokku ports:set kpa-omeka http:80:8080
+dokku ps:restart kpa-omeka
+```
+
+Repeat steps 2-6 for each additional Omeka instance (new DB/user, new app name, new domain).
+
+## Troubleshooting: Theme Not Found
+
+If you get `The current theme is not active. Its current state is "not_found"`, the themes directory is empty in the mounted volume. Seed themes/modules from the image:
+
+```bash
+dokku enter kpa-omeka web sh -lc "\
+cp -a /var/www/html/themes/. /var/www/html/volume/themes/ 2>/dev/null || true
+cp -a /var/www/html/modules/. /var/www/html/volume/modules/ 2>/dev/null || true
+"
+chown -R 65534:65534 /mnt/volume-1/omeka/kpa/files
+chmod -R u+rwX,g+rwX /mnt/volume-1/omeka/kpa/files
+dokku ps:restart kpa-omeka
+```
+
+## Troubleshooting: disk_free_space Warning
+
+If you see `disk_free_space(): No such file or directory`, Omeka is checking a missing files directory. Ensure `files/files` exists and set the file store base path to the mounted volume.
+
+Create the directory:
+
+```bash
+mkdir -p /mnt/volume-1/omeka/kpa/files/files
+chown -R 65534:65534 /mnt/volume-1/omeka/kpa/files
+```
+
+Set file store paths in `local.config.php` (persisted in the mounted config dir):
+
+`/mnt/volume-1/omeka/kpa/files/config/local.config.php`
+
+```php
+<?php
+return [
+    'file_store' => [
+        'local' => [
+            'base_path' => '/var/www/html/volume/files',
+            'base_uri' => '/files',
+        ],
+    ],
+];
+```
+
+Then restart:
+
+```bash
+dokku ps:restart kpa-omeka
+```
+
+## Multi-tenant Plan (Future)
+
+Omeka S is not multi-tenant. The safest approach is one Omeka app per tenant, all linked to a shared MySQL service with separate databases/users. If we later need true multi-tenant behavior, that would be a custom Omeka fork or middleware layer and a non-trivial project. For now, automate the per-tenant app flow (create app, DB/user, env vars, domain, storage mounts) and keep it repeatable.
+
+## Planned Sites
+
+- `kpa-omeka` is live and public.
+- `rhs-omeka` (Rapp Historical Society) should be deployed as a separate app and kept password-protected until policy is finalized.
+- Optional sample/stress-test sites: `larco-omeka`, `fortepan-omeka`, `smithsonian-omeka`.
+
+## Password Protection (RHS)
+
+For a temporary lock-down, use basic auth at the Dokku nginx layer.
+
+```bash
+sudo apt-get install -y apache2-utils
+sudo htpasswd -c /home/dokku/.htpasswd-rhs rhs
+dokku nginx:set rhs-omeka nginx-http-authentication "basic:/home/dokku/.htpasswd-rhs"
+dokku ps:restart rhs-omeka
+```
+
+To disable later:
+
+```bash
+dokku nginx:set rhs-omeka nginx-http-authentication
+dokku ps:restart rhs-omeka
+```
+
 ## Omeka S Sandbox
 - Sandbox UI: https://dev.omeka.org/omeka-s-sandbox/
 - Admin UI (redirects to login): https://dev.omeka.org/omeka-s-sandbox/admin
