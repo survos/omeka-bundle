@@ -2,6 +2,12 @@
 
 Symfony HttpClient wrapper for the Omeka-S REST API. PHP 8.4+, Symfony 7/8.
 
+## Documentation
+
+- **[Public Crawling Guide](docs/public-crawling.md)** — crawl any public Omeka S site
+  without an API key; build a directory of institutions; filter by license; import as JSONL.
+  Includes verified test sites with permissive licenses.
+
 ## Installation
 
 ```bash
@@ -30,6 +36,30 @@ survos_omeka:
       key_identity: '%env(default::OMEKA_REMOTE_KEY_IDENTITY)%'
       key_credential: '%env(default::OMEKA_REMOTE_KEY_CREDENTIAL)%'
 ```
+
+## Discovering Omeka Sites & Crawling Without an API Key
+
+This bundle can scrape the omeka.org Classic and S directories, probe each site
+live, detect its version and license, and stream any public Omeka S installation
+into a JSONL file — no credentials required.
+
+See **[docs/public-crawling.md](docs/public-crawling.md)** for the full guide,
+including all command flags, verified test sites, license categories, async
+Messenger setup, and programmatic usage.
+
+Quick start:
+
+```bash
+# Build a directory of live Omeka S installations with license info
+bin/console omeka:directory --type=s --live-only --permissive-only \
+    --output=/data/permissive-omeka-sites.jsonl
+
+# Crawl a public site to JSONL (auto-resumes on interruption)
+bin/console omeka:crawl https://iaamcfh.omeka.net --normalize \
+    --output=/data/iaamcfh.jsonl
+```
+
+---
 
 ## Dokku Deployment (Omeka S Image)
 
