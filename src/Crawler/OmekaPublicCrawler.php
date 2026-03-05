@@ -411,6 +411,16 @@ final class OmekaPublicCrawler
      */
     public function normalizeItem(array $raw): array
     {
+        // Use the item-level thumbnail if it's a real image (not a default placeholder).
+        // Default placeholders look like …/application/asset/thumbnails/default.png
+        $itemThumb = $raw['thumbnail_display_urls']['medium'] ?? null;
+        $isPlaceholder = $itemThumb === null
+            || str_contains($itemThumb, '/application/asset/thumbnails/')
+            || str_contains($itemThumb, '/asset/thumbnails/');
+
+        // When the item-level thumbnail is a placeholder, try the first media record.
+        $thumbnail = $isPlaceholder ? $this->resolveFirstMediaThumbnail($raw) : $itemThumb;
+
         $normalized = [
             'id'           => $raw['o:id'] ?? null,
             'url'          => $raw['@id'] ?? null,
@@ -418,7 +428,7 @@ final class OmekaPublicCrawler
             'resourceType' => $this->extractType($raw['@type'] ?? []),
             'created'      => $this->extractDateValue($raw['o:created'] ?? null),
             'modified'     => $this->extractDateValue($raw['o:modified'] ?? null),
-            'thumbnail'    => $raw['thumbnail_display_urls']['medium'] ?? null,
+            'thumbnail'    => $thumbnail,
         ];
 
         // Walk every key that looks like a vocabulary property (contains ":")
@@ -449,6 +459,48 @@ final class OmekaPublicCrawler
     // -------------------------------------------------------------------------
     // Internal helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Fetch the first media record for an item and return its medium thumbnail URL.
+     *
+     * Falls back to null if there are no media, or the first media has no real thumbnail.
+     * Only makes an HTTP request when the item has at least one o:media link.
+     *
+     * @param array<string,mixed> $raw Raw item from crawlItems()
+     */
+    private function resolveFirstMediaThumbnail(array $raw): ?string
+    {
+        $mediaLinks = $raw['o:media'] ?? [];
+        if (!is_array($mediaLinks) || $mediaLinks === []) {
+            return null;
+        }
+
+        // Take the first media link: {"@id": "https://…/api/media/N"}
+        $firstMediaUrl = $mediaLinks[0]['@id'] ?? null;
+        if (!is_string($firstMediaUrl) || $firstMediaUrl === '') {
+            return null;
+        }
+
+        try {
+            $response = $this->httpClient->request('GET', $firstMediaUrl);
+            /** @var array<string,mixed> $media */
+            $media = $response->toArray();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $thumb = $media['thumbnail_display_urls']['medium'] ?? null;
+
+        // Reject placeholder/default thumbnails from the media record too
+        if (!is_string($thumb) || $thumb === ''
+            || str_contains($thumb, '/application/asset/thumbnails/')
+            || str_contains($thumb, '/asset/thumbnails/')
+        ) {
+            return null;
+        }
+
+        return $thumb;
+    }
 
     /**
      * Fetch one page from a given API resource endpoint.
