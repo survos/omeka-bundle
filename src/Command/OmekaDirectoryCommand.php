@@ -1,7 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
 namespace Survos\OmekaBundle\Command;
+
 use Survos\DataContracts\Util\Arrays;
 use Survos\JsonlBundle\IO\JsonlWriter;
 use Survos\JsonlBundle\IO\JsonlWriterOptions;
@@ -20,6 +22,7 @@ use function in_array;
 use function rtrim;
 use function sprintf;
 use function substr;
+
 /**
  * Fetches the official Omeka Classic and Omeka S site directories from omeka.org,
  * probes each listed URL to confirm it is live and detect its Omeka version,
@@ -28,6 +31,7 @@ use function substr;
  * This JSONL is the source of truth for the museum/institution directory:
  * which Omeka sites exist in the wild, what version they run, and how many
  * public items they expose.
+ *
  * Usage:
  *   bin/console omeka:directory                           # probe all, write omeka-directory.jsonl
  *   bin/console omeka:directory --type=s                  # only Omeka S sites
@@ -36,9 +40,11 @@ use function substr;
  *   bin/console omeka:directory --output=/data/sites.jsonl
  *   bin/console omeka:directory --table                   # show table, don't write JSONL
  *   bin/console omeka:directory --force                   # re-probe even if output exists
+ *
  * The probe step makes one HTTP request per site (HEAD to /api/items?per_page=1).
  * It runs sequentially; expect ~500ms per site with a 10s timeout. The full
  * directory has ~600 Classic + ~120 S entries. Use --type to narrow scope.
+ *
  * Output JSONL schema per row:
  *   {
  *     "name":         "Site display name",
@@ -61,6 +67,7 @@ final class OmekaDirectoryCommand
         private readonly OmekaPublicCrawler $crawler,
     ) {
     }
+
     public function __invoke(
         SymfonyStyle $io,
         #[Option('Which directory to fetch: s, classic, or all')]
@@ -85,19 +92,27 @@ final class OmekaDirectoryCommand
             $io->error(sprintf('Invalid --type "%s". Use "all", "s", or "classic".', $type));
             return Command::FAILURE;
         }
+
         // ── Fetch directory ───────────────────────────────────────────────────
         $io->section(sprintf('Fetching Omeka %s directory from omeka.org…', $type));
+
         $entries = match ($type) {
             's'       => $this->parser->fetchS(),
             'classic' => $this->parser->fetchClassic(),
             default   => $this->parser->fetchAll(),
         };
+
         $total = count($entries);
         $io->writeln(sprintf('Found <info>%d</info> directory entries.', $total));
+
         if ($total === 0) {
             $io->warning('No entries found — the directory page format may have changed.');
+            return Command::FAILURE;
+        }
+
         // ── Probe each site ───────────────────────────────────────────────────
         $rows = [];
+
         if ($noProbe) {
             foreach ($entries as $entry) {
                 $rows[] = array_merge($entry, [
@@ -112,8 +127,12 @@ final class OmekaDirectoryCommand
             $progress = $io->createProgressBar($total);
             $progress->setFormat(' %current%/%max% [%bar%] %percent:3s%% — %message%');
             $progress->start();
+
+            foreach ($entries as $entry) {
                 $progress->setMessage(sprintf('%-50s', substr($entry['name'], 0, 50)));
+
                 $probe = $this->crawler->detectVersion($entry['url'], $timeout);
+
                 $row = array_merge($entry, [
                     'live'          => $probe['version'] !== null,
                     'omekaVersion'  => $probe['omekaVersion'],
@@ -124,12 +143,18 @@ final class OmekaDirectoryCommand
                     // Override type with confirmed version if detection disagrees
                     // (e.g. a Classic site listed in the S directory)
                     'detectedType'  => $probe['version'],
+                ]);
+
                 /** @var array<string,mixed> $row */
-                $row = Arrays::sparse($row);
+                $row = \Survos\DataContracts\Util\Arrays::sparse($row);
+
                 $rows[] = $row;
                 $progress->advance();
+            }
+
             $progress->finish();
             $io->newLine(2);
+
             $live        = count(array_filter($rows, fn($r) => ($r['live'] ?? false) === true));
             $dead        = $total - $live;
             $permissive  = count(array_filter($rows, fn($r) => in_array($r['license'] ?? '', ['cc', 'cc0', 'pd'], true)));
@@ -139,19 +164,31 @@ final class OmekaDirectoryCommand
                 '<info>%d</info> live  |  <comment>%d</comment> unreachable  |  license: <info>%d</info> permissive, <comment>%d</comment> restricted, %d unknown',
                 $live, $dead, $permissive, $restricted, $unknown,
             ));
+        }
+
         // ── Filter ────────────────────────────────────────────────────────────
         if ($liveOnly) {
             $rows = array_values(array_filter($rows, fn($r) => ($r['live'] ?? false) === true));
             $io->writeln(sprintf('After --live-only filter: <info>%d</info> rows.', count($rows)));
+        }
+
         if ($permissiveOnly) {
             $rows = array_values(array_filter($rows, fn($r) => in_array($r['license'] ?? '', ['cc', 'cc0', 'pd'], true)));
             $io->writeln(sprintf('After --permissive-only filter: <info>%d</info> rows.', count($rows)));
+        }
+
         // ── Output ────────────────────────────────────────────────────────────
         if ($table) {
             return $this->renderTable($io, $rows);
+        }
+
         return $this->writeJsonl($io, $rows, $output, $force);
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
+    // -------------------------------------------------------------------------
+
     /**
      * @param list<array<string,mixed>> $rows
      */
@@ -172,6 +209,7 @@ final class OmekaDirectoryCommand
                 'restricted' => '<comment>restricted</comment>',
                 'unknown'    => '?',
                 default      => '—',
+            };
             return [
                 $r['type'] ?? '?',
                 substr($r['name'] ?? '', 0, 38),
@@ -182,21 +220,38 @@ final class OmekaDirectoryCommand
                 $license,
             ];
         }, $rows);
+
         $io->table(['Type', 'Name', 'URL', 'Live', 'Version', 'Items', 'License'], $tableRows);
+
         return Command::SUCCESS;
+    }
+
+    /**
+     * @param list<array<string,mixed>> $rows
+     */
     private function writeJsonl(SymfonyStyle $io, array $rows, ?string $outputPath, bool $force): int
+    {
         $path = $outputPath ?? sprintf('%s/omeka-directory.jsonl', rtrim((string) getcwd(), '/'));
+
         $writer = JsonlWriter::open(
             $path,
             mode: $force ? 'w' : 'a',
             options: new JsonlWriterOptions(ensureDir: true, resetSidecars: $force),
         );
+
         foreach ($rows as $row) {
             // Use site URL as dedup token — skip if already written on resume
             $writer->write($row, $row['url'] ?? null);
+        }
+
         $result = $writer->finish();
+
         $io->success(sprintf(
             'Wrote %d rows → %s',
             $result->state->getStats()->getRows(),
+            $path,
         ));
+
+        return Command::SUCCESS;
+    }
 }
