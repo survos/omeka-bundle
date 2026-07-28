@@ -23,15 +23,23 @@ use function trim;
 use function urlencode;
 
 /**
- * Read-only crawler for any public Omeka-S installation.
+ * Read-only crawler for any public Omeka-S or Omeka Classic installation.
  *
- * No API key required. Works against any publicly-accessible Omeka-S site.
- * The Omeka-S REST API permits anonymous access to all public resources.
+ * No API key required. Works against any publicly-accessible Omeka site whose REST
+ * API is enabled (many Classic sites, including most Curatescape ones, disable it
+ * outright — {"message":"API is disabled"} — in which case this crawler can't help
+ * and a plugin-specific scrape is the only option; see CuratescapeProvider in md).
+ *
+ * Version is auto-detected per page fetch (see fetchPage()): Omeka-S responses carry
+ * an "omeka-s-total-results" header and JSON-LD items (@type, dcterms:*); Classic
+ * responses carry "omeka-total-results" and flat items (element_texts[].element.name).
+ * normalizeItem() dispatches on the item shape so callers get the same flat output
+ * regardless of which version a row came from.
  *
  * Usage:
  *   $crawler = new OmekaPublicCrawler($httpClient);
  *   foreach ($crawler->crawlItems('https://iaamcfh.omeka.net') as $item) {
- *       // $item is a raw JSON-LD array from the Omeka-S API
+ *       // $item is a raw item array (JSON-LD for S, flat element_texts for Classic)
  *   }
  */
 final class OmekaPublicCrawler
@@ -411,6 +419,10 @@ final class OmekaPublicCrawler
      */
     public function normalizeItem(array $raw): array
     {
+        if (isset($raw['element_texts']) && is_array($raw['element_texts'])) {
+            return $this->normalizeClassicItem($raw);
+        }
+
         // Use the item-level thumbnail if it's a real image (not a default placeholder).
         // Default placeholders look like …/application/asset/thumbnails/default.png
         $itemThumb = $raw['thumbnail_display_urls']['medium'] ?? null;
@@ -454,6 +466,95 @@ final class OmekaPublicCrawler
         $result = \Survos\DataContracts\Util\Arrays::sparse($normalized);
 
         return $result;
+    }
+
+    /**
+     * Normalize a raw Omeka Classic item (flat element_texts array) into the same flat
+     * structure normalizeItem() produces for Omeka-S, so downstream consumers don't need
+     * to know which version a row came from.
+     *
+     * Unverified against a live Classic API — every Curatescape/Classic site checked so
+     * far disables its API outright ({"message":"API is disabled"}, e.g.
+     * sciotohistorical.org). Shape follows Omeka Classic's documented REST API
+     * (element_texts[].element.name / .text, files[].url -> file_urls).
+     *
+     * @param array<string,mixed> $raw
+     * @return array<string,mixed>
+     */
+    private function normalizeClassicItem(array $raw): array
+    {
+        $texts = [];
+        foreach ($raw['element_texts'] ?? [] as $et) {
+            $name = $et['element']['name'] ?? null;
+            $text = $et['text'] ?? null;
+            if (is_string($name) && is_string($text) && $text !== '') {
+                $texts[$name][] = $text;
+            }
+        }
+
+        $one = static fn(string $name): ?string => $texts[$name][0] ?? null;
+        $many = static fn(string $name): array => $texts[$name] ?? [];
+
+        $normalized = [
+            'id'           => $raw['id'] ?? null,
+            'url'          => $this->classicPublicItemUrl($raw['url'] ?? null),
+            'title'        => $one('Title'),
+            'resourceType' => $raw['item_type']['name'] ?? null,
+            'created'      => $raw['added'] ?? null,
+            'modified'     => $raw['modified'] ?? null,
+            'thumbnail'    => $this->resolveFirstClassicFileThumbnail($raw),
+            'description'  => $one('Description'),
+            'date'         => $one('Date'),
+            'creator'      => count($many('Creator')) > 1 ? $many('Creator') : $one('Creator'),
+            'subject'      => $many('Subject'),
+            'rights'       => $one('Rights') ?? $one('License'),
+            'language'     => $one('Language'),
+        ];
+
+        /** @var array<string,mixed> $result */
+        $result = \Survos\DataContracts\Util\Arrays::sparse($normalized);
+
+        return $result;
+    }
+
+    /** http://host/api/items/181 -> http://host/items/show/181 */
+    private function classicPublicItemUrl(mixed $apiUrl): ?string
+    {
+        return is_string($apiUrl) && $apiUrl !== ''
+            ? preg_replace('#/api/items/(\d+)$#', '/items/show/$1', $apiUrl)
+            : null;
+    }
+
+    /**
+     * Classic items reference files by API link only ({"id":.., "url": ".../api/files/N"}),
+     * so getting a real thumbnail costs one extra request for the first file's file_urls —
+     * mirrors resolveFirstMediaThumbnail()'s approach for Omeka-S media below.
+     *
+     * @param array<string,mixed> $raw
+     */
+    private function resolveFirstClassicFileThumbnail(array $raw): ?string
+    {
+        $files = $raw['files'] ?? [];
+        if (!is_array($files) || $files === []) {
+            return null;
+        }
+
+        $firstFileUrl = $files[0]['url'] ?? null;
+        if (!is_string($firstFileUrl) || $firstFileUrl === '') {
+            return null;
+        }
+
+        try {
+            $response = $this->httpClient->request('GET', $firstFileUrl);
+            /** @var array<string,mixed> $file */
+            $file = $response->toArray();
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $thumb = $file['file_urls']['fullsize'] ?? $file['file_urls']['thumbnail'] ?? null;
+
+        return is_string($thumb) && $thumb !== '' ? $thumb : null;
     }
 
     // -------------------------------------------------------------------------
@@ -526,7 +627,8 @@ final class OmekaPublicCrawler
             'query' => $query,
         ]);
 
-        $total = (int) ($response->getHeaders()['omeka-s-total-results'][0] ?? 0);
+        $headers = $response->getHeaders();
+        $total = (int) ($headers['omeka-s-total-results'][0] ?? $headers['omeka-total-results'][0] ?? 0);
         /** @var array<int,array<string,mixed>> $results */
         $results = $response->toArray();
 
