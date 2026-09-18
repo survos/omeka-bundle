@@ -12,6 +12,9 @@ use function sprintf;
 
 final class OmekaClientRegistry
 {
+    /** @var array<string, OmekaClient> */
+    private readonly array $clients;
+
     /**
      * @param array<string, OmekaClient> $clients
      */
