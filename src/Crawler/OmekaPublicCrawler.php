@@ -10,10 +10,14 @@ use Symfony\Contracts\HttpClient\HttpClientInterface;
 use function array_key_exists;
 use function array_map;
 use function explode;
+use function hrtime;
 use function is_array;
+use function is_int;
 use function is_string;
 use function ltrim;
+use function min;
 use function preg_match;
+use function preg_replace;
 use function rtrim;
 use function sprintf;
 use function str_contains;
@@ -21,6 +25,7 @@ use function str_replace;
 use function strtolower;
 use function trim;
 use function urlencode;
+use function usleep;
 
 /**
  * Read-only crawler for any public Omeka-S or Omeka Classic installation.
@@ -47,8 +52,18 @@ final class OmekaPublicCrawler
     private const DEFAULT_PER_PAGE = 50;
     private const MAX_PER_PAGE = 100;
 
-    public function __construct(private readonly HttpClientInterface $httpClient)
-    {
+    /** Monotonic time (µs) of the last request this crawler sent; drives the politeness interval. */
+    private float $lastRequestAt = 0.0;
+
+    /**
+     * @param int $minRequestIntervalMs Minimum gap between requests this crawler sends. Small
+     *        library-hosted installs share one Apache box, so be polite. Retries/backoff on
+     *        429 and 5xx live one layer down, in the retrying client the bundle wires in.
+     */
+    public function __construct(
+        private readonly HttpClientInterface $httpClient,
+        private readonly int $minRequestIntervalMs = 0,
+    ) {
     }
 
     /**
@@ -60,10 +75,15 @@ final class OmekaPublicCrawler
      *   https://iaamcfh.omeka.net/api
      *   https://iaamcfh.omeka.net/api/
      *   https://iaamcfh.omeka.net/api/items  (trims resource path)
+     *   https://host/s/wej-site              (public site page -> https://host/api)
+     *
+     * The API is installation-wide: it never lives under /s/<site-slug>/. Use
+     * resolveSiteId() to scope a crawl to the site named in such a URL.
      */
     public function resolveApiUrl(string $input): string
     {
         $url = rtrim(trim($input), '/');
+        $url = preg_replace('#/s/[^/]+(/.*)?$#', '', $url) ?? $url;
 
         // Strip any /api/<resource> suffix, leaving just /api
         if (preg_match('#^(https?://[^/]+(?:/[^/]+)*?)/api(/.*)?$#i', $url, $m)) {
@@ -132,6 +152,7 @@ final class OmekaPublicCrawler
 
         try {
             // Fetch 25 items — enough for a license sample, cached on repeat runs
+            $this->throttle();
             $response = $this->httpClient->request('GET', sprintf('%s/items?per_page=25', $apiUrl), [
                 'timeout' => $timeoutSeconds,
             ]);
@@ -351,13 +372,45 @@ final class OmekaPublicCrawler
     }
 
     /**
+     * The Omeka-S site slug in a public URL (https://host/s/<slug>/...), or null.
+     */
+    public function siteSlugFromUrl(string $siteUrl): ?string
+    {
+        return preg_match('#/s/([^/?\#]+)#', $siteUrl, $m) ? $m[1] : null;
+    }
+
+    /**
+     * Resolve the o:id of the site named in a /s/<slug> URL, or null when the URL
+     * names no site (the whole installation is crawled).
+     *
+     * @throws \RuntimeException when the URL names a site the API does not know
+     */
+    public function resolveSiteId(string $siteUrl): ?int
+    {
+        $slug = $this->siteSlugFromUrl($siteUrl);
+        if ($slug === null) {
+            return null;
+        }
+
+        $result = $this->fetchPage($this->resolveApiUrl($siteUrl), 'sites', ['slug' => $slug], 1, 1);
+        $id = $result['results'][0]['o:id'] ?? null;
+        if (!is_int($id)) {
+            throw new \RuntimeException(sprintf('Omeka-S site "%s" not found at %s', $slug, $this->resolveApiUrl($siteUrl)));
+        }
+
+        return $id;
+    }
+
+    /**
      * List item sets (collections) for this site.
      *
      * Returns ['results' => array<int,array>, 'total' => int].
      */
-    public function getItemSets(string $siteUrl, int $page = 1, int $perPage = self::DEFAULT_PER_PAGE): array
+    public function getItemSets(string $siteUrl, int $page = 1, int $perPage = self::DEFAULT_PER_PAGE, ?int $siteId = null): array
     {
-        return $this->fetchPage($this->resolveApiUrl($siteUrl), 'item_sets', [], $page, $perPage);
+        $query = $siteId !== null ? ['site_id' => $siteId] : [];
+
+        return $this->fetchPage($this->resolveApiUrl($siteUrl), 'item_sets', $query, $page, $perPage);
     }
 
     /**
@@ -370,6 +423,7 @@ final class OmekaPublicCrawler
      * @param string   $siteUrl   Base URL of the Omeka-S site
      * @param int|null $itemSetId Restrict to a single item set; null = all
      * @param int      $perPage   API page size (capped at MAX_PER_PAGE)
+     * @param int|null $siteId    Restrict to one site (see resolveSiteId()); null = installation-wide
      *
      * @return \Generator<int, array<string,mixed>, mixed, int>
      */
@@ -377,30 +431,59 @@ final class OmekaPublicCrawler
         string $siteUrl,
         ?int $itemSetId = null,
         int $perPage = self::DEFAULT_PER_PAGE,
+        ?int $siteId = null,
     ): \Generator {
-        $apiUrl = $this->resolveApiUrl($siteUrl);
-        $perPage = min($perPage, self::MAX_PER_PAGE);
-
         $query = [];
         if ($itemSetId !== null) {
             $query['item_set_id'] = $itemSetId;
         }
+        if ($siteId !== null) {
+            $query['site_id'] = $siteId;
+        }
 
+        return yield from $this->crawlResource($this->resolveApiUrl($siteUrl), 'items', $query, $perPage);
+    }
+
+    /**
+     * Lazy generator over media records (o:original_url, o:media_type, o:size, o:source...).
+     *
+     * One paged listing instead of one request per item's media — the only way to get
+     * full-resolution URLs cheaply, since items carry only thumbnail_display_urls.
+     *
+     * @return \Generator<int, array<string,mixed>, mixed, int>
+     */
+    public function crawlMedia(
+        string $siteUrl,
+        int $perPage = self::DEFAULT_PER_PAGE,
+        ?int $siteId = null,
+    ): \Generator {
+        $query = $siteId !== null ? ['site_id' => $siteId] : [];
+
+        return yield from $this->crawlResource($this->resolveApiUrl($siteUrl), 'media', $query, $perPage);
+    }
+
+    /**
+     * @param array<string,mixed> $query
+     * @return \Generator<int, array<string,mixed>, mixed, int>
+     */
+    private function crawlResource(string $apiUrl, string $resource, array $query, int $perPage): \Generator
+    {
+        $perPage = min($perPage, self::MAX_PER_PAGE);
         $page = 1;
         $yielded = 0;
 
         do {
-            $result = $this->fetchPage($apiUrl, 'items', $query, $page, $perPage);
-            $items = $result['results'];
+            $result = $this->fetchPage($apiUrl, $resource, $query, $page, $perPage);
+            $rows = $result['results'];
             $total = $result['total'];
 
-            foreach ($items as $item) {
-                yield $item;
+            foreach ($rows as $row) {
+                yield $row;
                 $yielded++;
             }
 
             $page++;
-        } while ($yielded < $total && $items !== []);
+        } while ($yielded < $total && $rows !== []);
 
         return $yielded;
     }
@@ -583,6 +666,7 @@ final class OmekaPublicCrawler
         }
 
         try {
+            $this->throttle();
             $response = $this->httpClient->request('GET', $firstMediaUrl);
             /** @var array<string,mixed> $media */
             $media = $response->toArray();
@@ -623,6 +707,7 @@ final class OmekaPublicCrawler
             'per_page' => $perPage,
         ];
 
+        $this->throttle();
         $response = $this->httpClient->request('GET', sprintf('%s/%s', $apiUrl, $resource), [
             'query' => $query,
         ]);
@@ -636,6 +721,24 @@ final class OmekaPublicCrawler
             'results' => $results,
             'total'   => $total,
         ];
+    }
+
+    /**
+     * Sleep until minRequestIntervalMs has passed since the previous request.
+     * Cache hits pay it too; an Omeka crawl is a few dozen pages, so that is cheap.
+     */
+    private function throttle(): void
+    {
+        if ($this->minRequestIntervalMs <= 0) {
+            return;
+        }
+
+        $now = hrtime(true) / 1000;
+        $waitUs = (int) ($this->lastRequestAt + $this->minRequestIntervalMs * 1000 - $now);
+        if ($this->lastRequestAt > 0 && $waitUs > 0) {
+            usleep($waitUs);
+        }
+        $this->lastRequestAt = hrtime(true) / 1000;
     }
 
     /**

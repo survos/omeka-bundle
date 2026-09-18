@@ -24,10 +24,14 @@ use Symfony\Component\Cache\Adapter\FilesystemTagAwareAdapter;
 use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
 use Symfony\Component\DependencyInjection\Argument\TaggedIteratorArgument;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\HttpClient\CachingHttpClient;
+use Symfony\Component\HttpClient\RetryableHttpClient;
+use Symfony\Component\HttpClient\Retry\GenericRetryStrategy;
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
+use Symfony\Contracts\HttpClient\HttpClientInterface;
 use function array_key_first;
 
 final class SurvosOmekaBundle extends AbstractBundle
@@ -58,6 +62,32 @@ final class SurvosOmekaBundle extends AbstractBundle
                         ->integerNode('default_ttl')
                             ->defaultValue(86400)
                             ->info('Default TTL in seconds for cached responses (default: 24h)')
+                        ->end()
+                    ->end()
+                ->end()
+                ->arrayNode('crawler_politeness')
+                    ->addDefaultsIfNotSet()
+                    ->children()
+                        ->integerNode('min_interval_ms')
+                            ->defaultValue(250)
+                            ->min(0)
+                            ->info('Minimum gap between crawler requests; many public Omeka-S sites are small library-hosted boxes')
+                        ->end()
+                        ->integerNode('max_retries')
+                            ->defaultValue(5)
+                            ->min(0)
+                            ->info('Retries on 429/5xx/transport errors, exponential backoff honoring Retry-After')
+                        ->end()
+                        ->integerNode('retry_delay_ms')
+                            ->defaultValue(2000)
+                            ->min(0)
+                            ->info('First retry delay; doubles each attempt, capped at 60s')
+                        ->end()
+                        ->arrayNode('headers')
+                            ->normalizeKeys(false)
+                            ->useAttributeAsKey('name')
+                            ->scalarPrototype()->end()
+                            ->info('Default request headers for crawler requests, e.g. Accept-Encoding: identity for WAFs that 429 the bare "gzip" Symfony HttpClient sends')
                         ->end()
                     ->end()
                 ->end()
@@ -139,9 +169,30 @@ final class SurvosOmekaBundle extends AbstractBundle
             ])
             ->setPublic(false);
 
+        // Retries sit under the cache so only real network misses are retried.
+        $politeness = $config['crawler_politeness'];
+        $builder->register('omeka.http_client.base', HttpClientInterface::class)
+            ->setFactory([new Reference('http_client'), 'withOptions'])
+            ->setArguments([['headers' => $politeness['headers']]])
+            ->setPublic(false);
+
+        $builder->register('omeka.http_client.retrying', RetryableHttpClient::class)
+            ->setArguments([
+                new Reference('omeka.http_client.base'),
+                (new Definition(GenericRetryStrategy::class))->setArguments([
+                    GenericRetryStrategy::DEFAULT_RETRY_STATUS_CODES, // includes 429; Retry-After is honored
+                    $politeness['retry_delay_ms'],
+                    2.0,
+                    60000,
+                    0.2,
+                ]),
+                $politeness['max_retries'],
+            ])
+            ->setPublic(false);
+
         $builder->register('omeka.http_client', CachingHttpClient::class)
             ->setArguments([
-                new Reference('http_client'),       // decorated base client
+                new Reference('omeka.http_client.retrying'), // decorated base client
                 new Reference('omeka.http_cache'),  // PSR-6/TagAware cache pool
                 [],                                 // defaultOptions (none needed)
                 true,                               // sharedCache
@@ -152,7 +203,8 @@ final class SurvosOmekaBundle extends AbstractBundle
         // Public crawler — no API key needed, works against any Omeka-S site
         $builder->autowire(OmekaPublicCrawler::class)
             ->setAutoconfigured(true)
-            ->setArgument('$httpClient', new Reference('omeka.http_client'));
+            ->setArgument('$httpClient', new Reference('omeka.http_client'))
+            ->setArgument('$minRequestIntervalMs', $politeness['min_interval_ms']);
 
         // Directory parser — scrapes omeka.org HTML directory pages
         $builder->autowire(OmekaDirectoryParser::class)
