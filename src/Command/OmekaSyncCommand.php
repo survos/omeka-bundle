@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Survos\OmekaBundle\Command;
 
-use RuntimeException;
 use Survos\OmekaBundle\Client\OmekaClient;
 use Survos\OmekaBundle\Client\OmekaClientRegistry;
 use Survos\OmekaBundle\Exception\OmekaApiException;
@@ -14,19 +13,6 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use function array_filter;
-use function array_key_exists;
-use function array_values;
-use function array_keys;
-use function count;
-use function is_array;
-use function is_bool;
-use function is_int;
-use function is_string;
-use function in_array;
-use function sprintf;
-use function str_contains;
-use function str_starts_with;
 
 #[AsCommand('omeka:sync', 'Sync items from one Omeka API to another')]
 final class OmekaSyncCommand
@@ -91,7 +77,7 @@ final class OmekaSyncCommand
         $siteMap = [];
         if ($withSites) {
             $siteMap = $this->syncSites($sourceClient, $targetClient);
-            $io->writeln(sprintf('Sites synced: %d', count($siteMap)));
+            $io->writeln(\sprintf('Sites synced: %d', \count($siteMap)));
         }
 
         $itemSetMap = [];
@@ -106,7 +92,7 @@ final class OmekaSyncCommand
         $io->note('Syncing literal/URI metadata only (media and site attachments handled separately when enabled).');
 
         if (!$this->hasIdentifierProperty($targetClient)) {
-            throw new RuntimeException('Missing dcterms:identifier on target. Sync properties first.');
+            throw new \RuntimeException('Missing dcterms:identifier on target. Sync properties first.');
         }
 
         $created = 0;
@@ -117,28 +103,28 @@ final class OmekaSyncCommand
         while (true) {
             $result = $sourceClient->getItems(page: $page, perPage: $perPage, sortBy: 'id', sortOrder: 'asc');
 
-            if ($result->results === []) {
+            if ([] === $result->results) {
                 break;
             }
 
             foreach ($result->results as $row) {
-                $processed++;
+                ++$processed;
                 $item = Item::fromArray($row);
                 $properties = $this->sanitizeProperties($item->properties, $allowedTerms);
                 $identifier = $this->sourceIdentifier('item', $source, $item->id);
                 $properties = $this->ensureIdentifier($properties, $identifier);
 
-                if ($properties === []) {
+                if ([] === $properties) {
                     continue;
                 }
 
                 $existing = $targetClient->filterItemsByProperty('dcterms:identifier', $identifier);
-                if ($existing->results !== []) {
+                if ([] !== $existing->results) {
                     $targetId = $existing->results[0]['o:id'] ?? null;
-                    if (is_int($targetId)) {
+                    if (\is_int($targetId)) {
                         $itemIdMap[$item->id] = $targetId;
                     }
-                    if ($limit !== null && $processed >= $limit) {
+                    if (null !== $limit && $processed >= $limit) {
                         break 2;
                     }
                     continue;
@@ -153,38 +139,38 @@ final class OmekaSyncCommand
                         itemSetIds: $itemSetIds,
                     );
                     $itemIdMap[$item->id] = $createdItem->id;
-                    $created++;
+                    ++$created;
                 } catch (OmekaApiException $exception) {
-                    if (str_contains($exception->getMessage(), 'Authentication required')) {
+                    if (\str_contains($exception->getMessage(), 'Authentication required')) {
                         throw $exception;
                     }
 
-                    $errors++;
-                    $io->error(sprintf('Failed syncing item %d: %s', $item->id, $exception->getMessage()));
+                    ++$errors;
+                    $io->error(\sprintf('Failed syncing item %d: %s', $item->id, $exception->getMessage()));
                 }
 
-                if ($limit !== null && $processed >= $limit) {
+                if (null !== $limit && $processed >= $limit) {
                     break 2;
                 }
             }
 
-            $page++;
+            ++$page;
         }
 
-        if ($created === 0 && $errors === 0) {
-            throw new RuntimeException('No items were synced.');
+        if (0 === $created && 0 === $errors) {
+            throw new \RuntimeException('No items were synced.');
         }
 
-        $io->success(sprintf('Synced %d items (%d errors).', $created, $errors));
+        $io->success(\sprintf('Synced %d items (%d errors).', $created, $errors));
 
         if ($withMedia) {
             $mediaCount = $this->syncMedia($io, $sourceClient, $targetClient, $source, $itemIdMap, $allowedTerms);
-            $io->writeln(sprintf('Media synced: %d', $mediaCount));
+            $io->writeln(\sprintf('Media synced: %d', $mediaCount));
         }
 
         if ($withSiteItems) {
             $siteItemCount = $this->syncSiteItems($io, $sourceClient, $targetClient, $siteMap, $source, $itemIdMap);
-            $io->writeln(sprintf('Site items synced: %d', $siteItemCount));
+            $io->writeln(\sprintf('Site items synced: %d', $siteItemCount));
         }
 
         if ($withSitePages) {
@@ -197,7 +183,7 @@ final class OmekaSyncCommand
                 $itemIdMap,
                 $itemSetMap,
             );
-            $io->writeln(sprintf('Site pages synced: %d', $pageCount));
+            $io->writeln(\sprintf('Site pages synced: %d', $pageCount));
         }
 
         return Command::SUCCESS;
@@ -213,17 +199,17 @@ final class OmekaSyncCommand
     ): void {
         if ($withVocabularies) {
             $created = $this->syncVocabularies($sourceClient, $targetClient);
-            $io->writeln(sprintf('Vocabularies synced: %d', $created));
+            $io->writeln(\sprintf('Vocabularies synced: %d', $created));
         }
 
         if ($withProperties) {
             $created = $this->syncProperties($sourceClient, $targetClient);
-            $io->writeln(sprintf('Properties synced: %d', $created));
+            $io->writeln(\sprintf('Properties synced: %d', $created));
         }
 
         if ($withTemplates) {
             $created = $this->syncTemplates($sourceClient, $targetClient);
-            $io->writeln(sprintf('Templates synced: %d', $created));
+            $io->writeln(\sprintf('Templates synced: %d', $created));
         }
     }
 
@@ -235,7 +221,7 @@ final class OmekaSyncCommand
         $targetByPrefix = [];
         foreach ($target as $vocab) {
             $prefix = $vocab['o:prefix'] ?? null;
-            if (is_string($prefix) && $prefix !== '') {
+            if (\is_string($prefix) && '' !== $prefix) {
                 $targetByPrefix[$prefix] = $vocab;
             }
         }
@@ -244,19 +230,19 @@ final class OmekaSyncCommand
         foreach ($source as $vocab) {
             $prefix = $vocab['o:prefix'] ?? null;
             $label = $vocab['o:label'] ?? null;
-            if (!is_string($prefix) || $prefix === '' || !is_string($label) || $label === '') {
+            if (!\is_string($prefix) || '' === $prefix || !\is_string($label) || '' === $label) {
                 continue;
             }
 
-            if (array_key_exists($prefix, $targetByPrefix)) {
+            if (\array_key_exists($prefix, $targetByPrefix)) {
                 continue;
             }
 
             $namespace = $vocab['o:namespace_uri'] ?? null;
-            $namespace = is_string($namespace) && $namespace !== '' ? $namespace : null;
+            $namespace = \is_string($namespace) && '' !== $namespace ? $namespace : null;
 
             $targetClient->createVocabulary($prefix, $label, $namespace);
-            $created++;
+            ++$created;
         }
 
         return $created;
@@ -283,17 +269,13 @@ final class OmekaSyncCommand
 
             $sourceVocabId = $property->vocabularyId;
             $prefix = $sourceVocabById[$sourceVocabId] ?? null;
-            if (!is_string($prefix) || $prefix === '') {
-                throw new RuntimeException(sprintf('Property vocabulary missing for term "%s".', $property->term));
+            if (!\is_string($prefix) || '' === $prefix) {
+                throw new \RuntimeException(\sprintf('Property vocabulary missing for term "%s".', $property->term));
             }
 
             $targetVocabId = $targetVocabs[$prefix] ?? null;
-            if (!is_int($targetVocabId)) {
-                throw new RuntimeException(sprintf(
-                    'Vocabulary "%s" missing on target for property "%s".',
-                    $prefix,
-                    $property->term,
-                ));
+            if (!\is_int($targetVocabId)) {
+                throw new \RuntimeException(\sprintf('Vocabulary "%s" missing on target for property "%s".', $prefix, $property->term));
             }
 
             $targetClient->createProperty(
@@ -303,7 +285,7 @@ final class OmekaSyncCommand
                 $property->comment,
                 $targetVocabId,
             );
-            $created++;
+            ++$created;
         }
 
         return $created;
@@ -315,7 +297,7 @@ final class OmekaSyncCommand
         foreach ($client->getVocabularies() as $vocab) {
             $prefix = $vocab['o:prefix'] ?? null;
             $id = $vocab['o:id'] ?? null;
-            if (is_string($prefix) && $prefix !== '' && is_int($id)) {
+            if (\is_string($prefix) && '' !== $prefix && \is_int($id)) {
                 $map[$prefix] = $id;
             }
         }
@@ -329,7 +311,7 @@ final class OmekaSyncCommand
         foreach ($client->getVocabularies() as $vocab) {
             $prefix = $vocab['o:prefix'] ?? null;
             $id = $vocab['o:id'] ?? null;
-            if (is_string($prefix) && $prefix !== '' && is_int($id)) {
+            if (\is_string($prefix) && '' !== $prefix && \is_int($id)) {
                 $map[$id] = $prefix;
             }
         }
@@ -358,59 +340,38 @@ final class OmekaSyncCommand
             }
 
             $resourceClassId = null;
-            if ($template->resourceClassId !== null) {
+            if (null !== $template->resourceClassId) {
                 $term = $sourceResourceClasses[$template->resourceClassId] ?? null;
-                if (!is_string($term) || $term === '') {
-                    throw new RuntimeException(sprintf(
-                        'Missing resource class term for template "%s".',
-                        $template->label,
-                    ));
+                if (!\is_string($term) || '' === $term) {
+                    throw new \RuntimeException(\sprintf('Missing resource class term for template "%s".', $template->label));
                 }
                 $resourceClassId = $targetResourceClasses[$term] ?? null;
-                if (!is_int($resourceClassId)) {
-                    throw new RuntimeException(sprintf(
-                        'Resource class "%s" missing on target for template "%s".',
-                        $term,
-                        $template->label,
-                    ));
+                if (!\is_int($resourceClassId)) {
+                    throw new \RuntimeException(\sprintf('Resource class "%s" missing on target for template "%s".', $term, $template->label));
                 }
             }
 
             $titlePropertyId = null;
-            if ($template->titlePropertyId !== null) {
+            if (null !== $template->titlePropertyId) {
                 $term = $sourceProperties[$template->titlePropertyId] ?? null;
-                if (!is_string($term) || $term === '') {
-                    throw new RuntimeException(sprintf(
-                        'Missing title property term for template "%s".',
-                        $template->label,
-                    ));
+                if (!\is_string($term) || '' === $term) {
+                    throw new \RuntimeException(\sprintf('Missing title property term for template "%s".', $template->label));
                 }
                 $titlePropertyId = $targetProperties[$term] ?? null;
-                if (!is_int($titlePropertyId)) {
-                    throw new RuntimeException(sprintf(
-                        'Title property "%s" missing on target for template "%s".',
-                        $term,
-                        $template->label,
-                    ));
+                if (!\is_int($titlePropertyId)) {
+                    throw new \RuntimeException(\sprintf('Title property "%s" missing on target for template "%s".', $term, $template->label));
                 }
             }
 
             $descriptionPropertyId = null;
-            if ($template->descriptionPropertyId !== null) {
+            if (null !== $template->descriptionPropertyId) {
                 $term = $sourceProperties[$template->descriptionPropertyId] ?? null;
-                if (!is_string($term) || $term === '') {
-                    throw new RuntimeException(sprintf(
-                        'Missing description property term for template "%s".',
-                        $template->label,
-                    ));
+                if (!\is_string($term) || '' === $term) {
+                    throw new \RuntimeException(\sprintf('Missing description property term for template "%s".', $template->label));
                 }
                 $descriptionPropertyId = $targetProperties[$term] ?? null;
-                if (!is_int($descriptionPropertyId)) {
-                    throw new RuntimeException(sprintf(
-                        'Description property "%s" missing on target for template "%s".',
-                        $term,
-                        $template->label,
-                    ));
+                if (!\is_int($descriptionPropertyId)) {
+                    throw new \RuntimeException(\sprintf('Description property "%s" missing on target for template "%s".', $term, $template->label));
                 }
             }
 
@@ -427,7 +388,7 @@ final class OmekaSyncCommand
                 $descriptionPropertyId,
                 $properties,
             );
-            $created++;
+            ++$created;
         }
 
         return $created;
@@ -443,35 +404,28 @@ final class OmekaSyncCommand
         foreach ($template->properties as $templateProperty) {
             $sourcePropertyId = $templateProperty['o:property']['o:id'] ?? null;
             $term = $templateProperty['o:property']['o:term'] ?? null;
-            if (!is_string($term) || $term === '') {
-                $term = is_int($sourcePropertyId) ? ($sourcePropertyTerms[$sourcePropertyId] ?? null) : null;
+            if (!\is_string($term) || '' === $term) {
+                $term = \is_int($sourcePropertyId) ? ($sourcePropertyTerms[$sourcePropertyId] ?? null) : null;
             }
 
-            if (!is_string($term) || $term === '') {
-                throw new RuntimeException(sprintf(
-                    'Missing property term in template "%s".',
-                    $template->label,
-                ));
+            if (!\is_string($term) || '' === $term) {
+                throw new \RuntimeException(\sprintf('Missing property term in template "%s".', $template->label));
             }
 
             $targetPropertyId = $targetPropertyIds[$term] ?? null;
-            if (!is_int($targetPropertyId)) {
-                throw new RuntimeException(sprintf(
-                    'Property "%s" missing on target for template "%s".',
-                    $term,
-                    $template->label,
-                ));
+            if (!\is_int($targetPropertyId)) {
+                throw new \RuntimeException(\sprintf('Property "%s" missing on target for template "%s".', $term, $template->label));
             }
 
             $dataTypes = [];
             foreach ($templateProperty['o:data_type'] ?? [] as $dataType) {
-                $name = is_array($dataType) ? ($dataType['name'] ?? null) : $dataType;
-                if (is_string($name) && $name !== '') {
+                $name = \is_array($dataType) ? ($dataType['name'] ?? null) : $dataType;
+                if (\is_string($name) && '' !== $name) {
                     $dataTypes[] = $name;
                 }
             }
 
-            $dataTypes = array_values(array_filter($dataTypes));
+            $dataTypes = \array_values(\array_filter($dataTypes));
 
             $properties[] = [
                 'property_id' => $targetPropertyId,
@@ -510,7 +464,7 @@ final class OmekaSyncCommand
         foreach ($client->getResourceClasses() as $class) {
             $term = $class['o:term'] ?? null;
             $id = $class['o:id'] ?? null;
-            if (is_string($term) && $term !== '' && is_int($id)) {
+            if (\is_string($term) && '' !== $term && \is_int($id)) {
                 $map[$term] = $id;
             }
         }
@@ -524,7 +478,7 @@ final class OmekaSyncCommand
         foreach ($client->getResourceClasses() as $class) {
             $term = $class['o:term'] ?? null;
             $id = $class['o:id'] ?? null;
-            if (is_string($term) && $term !== '' && is_int($id)) {
+            if (\is_string($term) && '' !== $term && \is_int($id)) {
                 $map[$id] = $term;
             }
         }
@@ -537,35 +491,35 @@ final class OmekaSyncCommand
         $sanitized = [];
 
         foreach ($properties as $term => $values) {
-            if (str_starts_with($term, 'o:') || str_starts_with($term, '@')) {
+            if (\str_starts_with($term, 'o:') || \str_starts_with($term, '@')) {
                 continue;
             }
-            if ($allowedTerms !== [] && !isset($allowedTerms[$term])) {
+            if ([] !== $allowedTerms && !isset($allowedTerms[$term])) {
                 continue;
             }
 
-            if (!is_array($values)) {
+            if (!\is_array($values)) {
                 $sanitized[$term] = $values;
                 continue;
             }
 
             $filtered = [];
             foreach ($values as $value) {
-                if (!is_array($value)) {
+                if (!\is_array($value)) {
                     $filtered[] = $value;
                     continue;
                 }
 
                 $type = $value['type'] ?? 'literal';
-                if (!is_string($type) || str_starts_with($type, 'resource')) {
+                if (!\is_string($type) || \str_starts_with($type, 'resource')) {
                     continue;
                 }
 
                 $filtered[] = $value;
             }
 
-            if (count($filtered) > 0) {
-                $sanitized[$term] = array_values($filtered);
+            if (\count($filtered) > 0) {
+                $sanitized[$term] = \array_values($filtered);
             }
         }
 
@@ -595,26 +549,26 @@ final class OmekaSyncCommand
         $created = 0;
 
         if (!$this->hasIdentifierProperty($targetClient)) {
-            throw new RuntimeException('Missing dcterms:identifier on target. Sync properties first.');
+            throw new \RuntimeException('Missing dcterms:identifier on target. Sync properties first.');
         }
 
         while (true) {
             $result = $sourceClient->getItemSets(page: $page, perPage: 50);
-            if ($result->results === []) {
+            if ([] === $result->results) {
                 break;
             }
 
             foreach ($result->results as $row) {
                 $sourceId = $row['o:id'] ?? null;
-                if (!is_int($sourceId)) {
+                if (!\is_int($sourceId)) {
                     continue;
                 }
 
                 $identifier = $this->sourceIdentifier('item_set', $sourceName, $sourceId);
                 $existing = $targetClient->filterItemSetsByProperty('dcterms:identifier', $identifier);
-                if ($existing->results !== []) {
+                if ([] !== $existing->results) {
                     $targetId = $existing->results[0]['o:id'] ?? null;
-                    if (is_int($targetId)) {
+                    if (\is_int($targetId)) {
                         $map[$sourceId] = $targetId;
                     }
                     continue;
@@ -625,20 +579,20 @@ final class OmekaSyncCommand
                 $properties = $this->ensureIdentifier($properties, $identifier);
 
                 $isPublic = $row['o:is_public'] ?? null;
-                $isPublic = is_bool($isPublic) ? $isPublic : null;
+                $isPublic = \is_bool($isPublic) ? $isPublic : null;
 
                 $createdSet = $targetClient->createItemSet($properties, $isPublic);
                 $targetId = $createdSet['o:id'] ?? null;
-                if (is_int($targetId)) {
+                if (\is_int($targetId)) {
                     $map[$sourceId] = $targetId;
                 }
-                $created++;
+                ++$created;
             }
 
-            $page++;
+            ++$page;
         }
 
-        $io->writeln(sprintf('Item sets synced: %d', $created));
+        $io->writeln(\sprintf('Item sets synced: %d', $created));
 
         return $map;
     }
@@ -649,7 +603,7 @@ final class OmekaSyncCommand
         foreach ($targetClient->getSites() as $site) {
             $slug = $site['o:slug'] ?? null;
             $id = $site['o:id'] ?? null;
-            if (is_string($slug) && $slug !== '' && is_int($id)) {
+            if (\is_string($slug) && '' !== $slug && \is_int($id)) {
                 $targetBySlug[$slug] = $id;
             }
         }
@@ -659,7 +613,7 @@ final class OmekaSyncCommand
             $slug = $site['o:slug'] ?? null;
             $title = $site['o:title'] ?? null;
             $sourceId = $site['o:id'] ?? null;
-            if (!is_string($slug) || $slug === '' || !is_string($title) || $title === '' || !is_int($sourceId)) {
+            if (!\is_string($slug) || '' === $slug || !\is_string($title) || '' === $title || !\is_int($sourceId)) {
                 continue;
             }
 
@@ -669,13 +623,13 @@ final class OmekaSyncCommand
             }
 
             $theme = $site['o:theme'] ?? null;
-            $theme = is_string($theme) && $theme !== '' ? $theme : null;
+            $theme = \is_string($theme) && '' !== $theme ? $theme : null;
             $isPublic = $site['o:is_public'] ?? true;
-            $isPublic = is_bool($isPublic) ? $isPublic : true;
+            $isPublic = \is_bool($isPublic) ? $isPublic : true;
 
             $created = $targetClient->createSite($slug, $title, $theme, $isPublic);
             $targetId = $created['o:id'] ?? null;
-            if (is_int($targetId)) {
+            if (\is_int($targetId)) {
                 $map[$sourceId] = $targetId;
             }
         }
@@ -691,8 +645,9 @@ final class OmekaSyncCommand
         string $sourceName,
         array $itemIdMap,
     ): int {
-        if ($siteMap === []) {
+        if ([] === $siteMap) {
             $io->warning('No sites mapped; skipping site items.');
+
             return 0;
         }
 
@@ -702,13 +657,13 @@ final class OmekaSyncCommand
             $page = 1;
             while (true) {
                 $result = $sourceClient->getItems(siteId: (int) $sourceSiteId, page: $page, perPage: 50);
-                if ($result->results === []) {
+                if ([] === $result->results) {
                     break;
                 }
 
                 foreach ($result->results as $row) {
                     $sourceItemId = $row['o:id'] ?? null;
-                    if (!is_int($sourceItemId)) {
+                    if (!\is_int($sourceItemId)) {
                         continue;
                     }
 
@@ -718,15 +673,15 @@ final class OmekaSyncCommand
                         $sourceItemId,
                     );
 
-                    if (!is_int($targetItemId)) {
+                    if (!\is_int($targetItemId)) {
                         continue;
                     }
 
                     $targetClient->updateItemSites($targetItemId, [(int) $targetSiteId]);
-                    $count++;
+                    ++$count;
                 }
 
-                $page++;
+                ++$page;
             }
         }
 
@@ -742,8 +697,9 @@ final class OmekaSyncCommand
         array $itemIdMap,
         array $itemSetMap,
     ): int {
-        if ($siteMap === []) {
+        if ([] === $siteMap) {
             $io->warning('No sites mapped; skipping site pages.');
+
             return 0;
         }
 
@@ -756,14 +712,14 @@ final class OmekaSyncCommand
 
             while (true) {
                 $result = $sourceClient->getSitePages((int) $sourceSiteId, $page, 100);
-                if ($result->results === []) {
+                if ([] === $result->results) {
                     break;
                 }
 
                 foreach ($result->results as $pageData) {
                     $sourcePageId = $pageData['o:id'] ?? null;
                     $slug = $pageData['o:slug'] ?? null;
-                    if (!is_int($sourcePageId) || !is_string($slug) || $slug === '') {
+                    if (!\is_int($sourcePageId) || !\is_string($slug) || '' === $slug) {
                         continue;
                     }
 
@@ -782,14 +738,14 @@ final class OmekaSyncCommand
 
                     $createdPage = $targetClient->createSitePage((int) $targetSiteId, $payload);
                     $targetPageId = $createdPage['o:id'] ?? null;
-                    if (is_int($targetPageId)) {
+                    if (\is_int($targetPageId)) {
                         $pageMap[$sourcePageId] = $targetPageId;
                     }
 
-                    $created++;
+                    ++$created;
                 }
 
-                $page++;
+                ++$page;
             }
 
             $this->syncSiteNavigation($sourceClient, $targetClient, (int) $sourceSiteId, (int) $targetSiteId, $pageMap);
@@ -807,7 +763,7 @@ final class OmekaSyncCommand
     ): void {
         $sourceSite = $sourceClient->getSite($sourceSiteId);
         $navigation = $sourceSite['o:navigation'] ?? null;
-        if (!is_array($navigation)) {
+        if (!\is_array($navigation)) {
             return;
         }
 
@@ -823,18 +779,18 @@ final class OmekaSyncCommand
         $mapped = [];
 
         foreach ($navigation as $entry) {
-            if (!is_array($entry)) {
+            if (!\is_array($entry)) {
                 continue;
             }
 
             if (($entry['type'] ?? null) === 'page' && isset($entry['data']['id'])) {
                 $sourcePageId = $entry['data']['id'];
-                if (is_int($sourcePageId) && isset($pageMap[$sourcePageId])) {
+                if (\is_int($sourcePageId) && isset($pageMap[$sourcePageId])) {
                     $entry['data']['id'] = $pageMap[$sourcePageId];
                 }
             }
 
-            if (isset($entry['children']) && is_array($entry['children'])) {
+            if (isset($entry['children']) && \is_array($entry['children'])) {
                 $entry['children'] = $this->mapNavigation($entry['children'], $pageMap);
             }
 
@@ -850,19 +806,19 @@ final class OmekaSyncCommand
         $page = 1;
         while (true) {
             $result = $client->getSitePages($siteId, $page, 100);
-            if ($result->results === []) {
+            if ([] === $result->results) {
                 break;
             }
 
             foreach ($result->results as $pageData) {
                 $slug = $pageData['o:slug'] ?? null;
                 $id = $pageData['o:id'] ?? null;
-                if (is_string($slug) && $slug !== '' && is_int($id)) {
+                if (\is_string($slug) && '' !== $slug && \is_int($id)) {
                     $map[$slug] = $id;
                 }
             }
 
-            $page++;
+            ++$page;
         }
 
         return $map;
@@ -879,17 +835,17 @@ final class OmekaSyncCommand
         $keep = ['o:slug', 'o:title', 'o:is_public', 'o:layout', 'o:layout_data', 'o:blocks', 'o:block'];
 
         foreach ($keep as $key) {
-            if (array_key_exists($key, $pageData)) {
+            if (\array_key_exists($key, $pageData)) {
                 $payload[$key] = $pageData[$key];
             }
         }
 
         $payload['o:site'] = ['o:id' => $targetSiteId];
 
-        if (isset($payload['o:blocks']) && is_array($payload['o:blocks'])) {
+        if (isset($payload['o:blocks']) && \is_array($payload['o:blocks'])) {
             $payload['o:blocks'] = $this->mapBlocks($payload['o:blocks'], $sourceName, $itemIdMap, $itemSetMap);
         }
-        if (isset($payload['o:block']) && is_array($payload['o:block'])) {
+        if (isset($payload['o:block']) && \is_array($payload['o:block'])) {
             $payload['o:block'] = $this->mapBlocks($payload['o:block'], $sourceName, $itemIdMap, $itemSetMap);
         }
 
@@ -905,11 +861,11 @@ final class OmekaSyncCommand
         $mapped = [];
 
         foreach ($blocks as $block) {
-            if (!is_array($block)) {
+            if (!\is_array($block)) {
                 continue;
             }
 
-            if (isset($block['o:data']) && is_array($block['o:data'])) {
+            if (isset($block['o:data']) && \is_array($block['o:data'])) {
                 $block['o:data'] = $this->mapBlockData($block['o:data'], $sourceName, $itemIdMap, $itemSetMap);
             }
 
@@ -929,12 +885,12 @@ final class OmekaSyncCommand
         $itemSetKeys = ['item_set', 'item_sets', 'item_set_id', 'item_set_ids'];
 
         foreach ($data as $key => $value) {
-            if (in_array($key, $itemKeys, true)) {
+            if (\in_array($key, $itemKeys, true)) {
                 $data[$key] = $this->mapIds($value, $sourceName, $itemIdMap, 'item');
                 continue;
             }
 
-            if (in_array($key, $itemSetKeys, true)) {
+            if (\in_array($key, $itemSetKeys, true)) {
                 $data[$key] = $this->mapIds($value, $sourceName, $itemSetMap, 'item_set');
             }
         }
@@ -944,14 +900,14 @@ final class OmekaSyncCommand
 
     private function mapIds(mixed $value, string $sourceName, array $map, string $type): mixed
     {
-        if (is_int($value)) {
+        if (\is_int($value)) {
             return $map[$value] ?? $value;
         }
 
-        if (is_array($value)) {
+        if (\is_array($value)) {
             $mapped = [];
             foreach ($value as $entry) {
-                if (is_int($entry)) {
+                if (\is_int($entry)) {
                     $mapped[] = $map[$entry] ?? $entry;
                 } else {
                     $mapped[] = $entry;
@@ -976,19 +932,19 @@ final class OmekaSyncCommand
         $page = 1;
 
         if (!$this->hasIdentifierProperty($targetClient)) {
-            throw new RuntimeException('Missing dcterms:identifier on target. Sync properties first.');
+            throw new \RuntimeException('Missing dcterms:identifier on target. Sync properties first.');
         }
 
         while (true) {
             $mediaResult = $sourceClient->getMedia(page: $page, perPage: 25);
-            if ($mediaResult->results === []) {
+            if ([] === $mediaResult->results) {
                 break;
             }
 
             foreach ($mediaResult->results as $media) {
                 $sourceMediaId = $media['o:id'] ?? null;
                 $sourceItemId = $media['o:item']['o:id'] ?? null;
-                if (!is_int($sourceMediaId) || !is_int($sourceItemId)) {
+                if (!\is_int($sourceMediaId) || !\is_int($sourceItemId)) {
                     continue;
                 }
 
@@ -998,19 +954,19 @@ final class OmekaSyncCommand
                     $sourceItemId,
                 );
 
-                if (!is_int($targetItemId)) {
+                if (!\is_int($targetItemId)) {
                     continue;
                 }
 
                 $identifier = $this->sourceIdentifier('media', $sourceName, $sourceMediaId);
                 $existing = $targetClient->filterMediaByProperty('dcterms:identifier', $identifier);
-                if ($existing->results !== []) {
+                if ([] !== $existing->results) {
                     continue;
                 }
 
                 $url = $this->mediaUrl($media);
-                if ($url === null) {
-                    $io->warning(sprintf('Skipping media %d: no URL found.', $sourceMediaId));
+                if (null === $url) {
+                    $io->warning(\sprintf('Skipping media %d: no URL found.', $sourceMediaId));
                     continue;
                 }
 
@@ -1019,15 +975,15 @@ final class OmekaSyncCommand
                 $properties = $this->ensureIdentifier($properties, $identifier);
 
                 $title = null;
-                if (isset($media['o:title']) && is_string($media['o:title'])) {
+                if (isset($media['o:title']) && \is_string($media['o:title'])) {
                     $title = $media['o:title'];
                 }
 
                 $targetClient->createMediaFromUrl($targetItemId, $url, $properties, $title);
-                $count++;
+                ++$count;
             }
 
-            $page++;
+            ++$page;
         }
 
         return $count;
@@ -1036,12 +992,12 @@ final class OmekaSyncCommand
     private function mediaUrl(array $media): ?string
     {
         $url = $media['o:original_url'] ?? null;
-        if (is_string($url) && str_starts_with($url, 'http')) {
+        if (\is_string($url) && \str_starts_with($url, 'http')) {
             return $url;
         }
 
         $source = $media['o:source'] ?? null;
-        if (is_string($source) && str_starts_with($source, 'http')) {
+        if (\is_string($source) && \str_starts_with($source, 'http')) {
             return $source;
         }
 
@@ -1057,24 +1013,24 @@ final class OmekaSyncCommand
         $existing = $client->filterItemsByProperty('dcterms:identifier', $identifier);
         $targetId = $existing->results[0]['o:id'] ?? null;
 
-        return is_int($targetId) ? $targetId : null;
+        return \is_int($targetId) ? $targetId : null;
     }
 
     private function mapItemSetIds(array $sourceIds, array $itemSetMap, bool $withItemSets): array
     {
-        if ($sourceIds === []) {
+        if ([] === $sourceIds) {
             return [];
         }
 
         $mapped = [];
         foreach ($sourceIds as $sourceId) {
-            if (!is_int($sourceId)) {
+            if (!\is_int($sourceId)) {
                 continue;
             }
 
             if (!isset($itemSetMap[$sourceId])) {
                 if ($withItemSets) {
-                    throw new RuntimeException(sprintf('Missing item set mapping for source id %d.', $sourceId));
+                    throw new \RuntimeException(\sprintf('Missing item set mapping for source id %d.', $sourceId));
                 }
                 continue;
             }
@@ -1088,7 +1044,7 @@ final class OmekaSyncCommand
     private function hasIdentifierProperty(OmekaClient $client): bool
     {
         foreach ($client->getProperties() as $property) {
-            if ($property->term === 'dcterms:identifier') {
+            if ('dcterms:identifier' === $property->term) {
                 return true;
             }
         }
@@ -1098,7 +1054,7 @@ final class OmekaSyncCommand
 
     private function sourceIdentifier(string $type, string $sourceName, int $id): string
     {
-        return sprintf('omeka:%s:%s:%d', $sourceName, $type, $id);
+        return \sprintf('omeka:%s:%s:%d', $sourceName, $type, $id);
     }
 
     private function ensureIdentifier(array $properties, string $identifier): array
@@ -1107,16 +1063,18 @@ final class OmekaSyncCommand
 
         if (!isset($properties['dcterms:identifier'])) {
             $properties['dcterms:identifier'] = [$value];
+
             return $properties;
         }
 
         $existing = $properties['dcterms:identifier'];
-        if (is_string($existing)) {
+        if (\is_string($existing)) {
             $properties['dcterms:identifier'] = [$existing, $value];
+
             return $properties;
         }
 
-        if (is_array($existing)) {
+        if (\is_array($existing)) {
             $existing[] = $value;
             $properties['dcterms:identifier'] = $existing;
         }
@@ -1136,10 +1094,10 @@ final class OmekaSyncCommand
         ];
 
         foreach ($data as $key => $value) {
-            if (in_array($key, $skip, true)) {
+            if (\in_array($key, $skip, true)) {
                 continue;
             }
-            if (is_array($value)) {
+            if (\is_array($value)) {
                 $properties[$key] = $value;
             }
         }

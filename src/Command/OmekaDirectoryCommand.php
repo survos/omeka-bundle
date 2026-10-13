@@ -13,15 +13,6 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use function array_filter;
-use function array_map;
-use function array_values;
-use function count;
-use function getcwd;
-use function in_array;
-use function rtrim;
-use function sprintf;
-use function substr;
 
 /**
  * Fetches the official Omeka Classic and Omeka S site directories from omeka.org,
@@ -88,25 +79,27 @@ final class OmekaDirectoryCommand
         bool $permissiveOnly = false,
     ): int {
         // ── Validate --type ───────────────────────────────────────────────────
-        if (!in_array($type, ['all', 's', 'classic'], true)) {
-            $io->error(sprintf('Invalid --type "%s". Use "all", "s", or "classic".', $type));
+        if (!\in_array($type, ['all', 's', 'classic'], true)) {
+            $io->error(\sprintf('Invalid --type "%s". Use "all", "s", or "classic".', $type));
+
             return Command::FAILURE;
         }
 
         // ── Fetch directory ───────────────────────────────────────────────────
-        $io->section(sprintf('Fetching Omeka %s directory from omeka.org…', $type));
+        $io->section(\sprintf('Fetching Omeka %s directory from omeka.org…', $type));
 
         $entries = match ($type) {
-            's'       => $this->parser->fetchS(),
+            's' => $this->parser->fetchS(),
             'classic' => $this->parser->fetchClassic(),
-            default   => $this->parser->fetchAll(),
+            default => $this->parser->fetchAll(),
         };
 
-        $total = count($entries);
-        $io->writeln(sprintf('Found <info>%d</info> directory entries.', $total));
+        $total = \count($entries);
+        $io->writeln(\sprintf('Found <info>%d</info> directory entries.', $total));
 
-        if ($total === 0) {
+        if (0 === $total) {
             $io->warning('No entries found — the directory page format may have changed.');
+
             return Command::FAILURE;
         }
 
@@ -116,37 +109,37 @@ final class OmekaDirectoryCommand
         if ($noProbe) {
             foreach ($entries as $entry) {
                 $rows[] = array_merge($entry, [
-                    'live'         => null,
+                    'live' => null,
                     'omekaVersion' => null,
-                    'totalItems'   => 0,
-                    'error'        => null,
+                    'totalItems' => 0,
+                    'error' => null,
                 ]);
             }
         } else {
-            $io->section(sprintf('Probing %d sites (timeout: %ds each)…', $total, $timeout));
+            $io->section(\sprintf('Probing %d sites (timeout: %ds each)…', $total, $timeout));
             $progress = $io->createProgressBar($total);
             $progress->setFormat(' %current%/%max% [%bar%] %percent:3s%% — %message%');
             $progress->start();
 
             foreach ($entries as $entry) {
-                $progress->setMessage(sprintf('%-50s', substr($entry['name'], 0, 50)));
+                $progress->setMessage(\sprintf('%-50s', \substr($entry['name'], 0, 50)));
 
                 $probe = $this->crawler->detectVersion($entry['url'], $timeout);
 
                 $row = array_merge($entry, [
-                    'live'          => $probe['version'] !== null,
-                    'omekaVersion'  => $probe['omekaVersion'],
-                    'totalItems'    => $probe['totalItems'],
-                    'license'       => $probe['license'],
+                    'live' => null !== $probe['version'],
+                    'omekaVersion' => $probe['omekaVersion'],
+                    'totalItems' => $probe['totalItems'],
+                    'license' => $probe['license'],
                     'licenseDetail' => $probe['licenseDetail'],
-                    'error'         => $probe['error'],
+                    'error' => $probe['error'],
                     // Override type with confirmed version if detection disagrees
                     // (e.g. a Classic site listed in the S directory)
-                    'detectedType'  => $probe['version'],
+                    'detectedType' => $probe['version'],
                 ]);
 
                 /** @var array<string,mixed> $row */
-                $row = \Survos\DataContracts\Util\Arrays::sparse($row);
+                $row = Arrays::sparse($row);
 
                 $rows[] = $row;
                 $progress->advance();
@@ -155,12 +148,12 @@ final class OmekaDirectoryCommand
             $progress->finish();
             $io->newLine(2);
 
-            $live        = count(array_filter($rows, fn($r) => ($r['live'] ?? false) === true));
-            $dead        = $total - $live;
-            $permissive  = count(array_filter($rows, fn($r) => in_array($r['license'] ?? '', ['cc', 'cc0', 'pd'], true)));
-            $restricted  = count(array_filter($rows, fn($r) => ($r['license'] ?? '') === 'restricted'));
-            $unknown     = count(array_filter($rows, fn($r) => in_array($r['license'] ?? '', ['unknown', ''], true)));
-            $io->writeln(sprintf(
+            $live = \count(\array_filter($rows, fn ($r) => ($r['live'] ?? false) === true));
+            $dead = $total - $live;
+            $permissive = \count(\array_filter($rows, fn ($r) => \in_array($r['license'] ?? '', ['cc', 'cc0', 'pd'], true)));
+            $restricted = \count(\array_filter($rows, fn ($r) => ($r['license'] ?? '') === 'restricted'));
+            $unknown = \count(\array_filter($rows, fn ($r) => \in_array($r['license'] ?? '', ['unknown', ''], true)));
+            $io->writeln(\sprintf(
                 '<info>%d</info> live  |  <comment>%d</comment> unreachable  |  license: <info>%d</info> permissive, <comment>%d</comment> restricted, %d unknown',
                 $live, $dead, $permissive, $restricted, $unknown,
             ));
@@ -168,13 +161,13 @@ final class OmekaDirectoryCommand
 
         // ── Filter ────────────────────────────────────────────────────────────
         if ($liveOnly) {
-            $rows = array_values(array_filter($rows, fn($r) => ($r['live'] ?? false) === true));
-            $io->writeln(sprintf('After --live-only filter: <info>%d</info> rows.', count($rows)));
+            $rows = \array_values(\array_filter($rows, fn ($r) => ($r['live'] ?? false) === true));
+            $io->writeln(\sprintf('After --live-only filter: <info>%d</info> rows.', \count($rows)));
         }
 
         if ($permissiveOnly) {
-            $rows = array_values(array_filter($rows, fn($r) => in_array($r['license'] ?? '', ['cc', 'cc0', 'pd'], true)));
-            $io->writeln(sprintf('After --permissive-only filter: <info>%d</info> rows.', count($rows)));
+            $rows = \array_values(\array_filter($rows, fn ($r) => \in_array($r['license'] ?? '', ['cc', 'cc0', 'pd'], true)));
+            $io->writeln(\sprintf('After --permissive-only filter: <info>%d</info> rows.', \count($rows)));
         }
 
         // ── Output ────────────────────────────────────────────────────────────
@@ -194,26 +187,27 @@ final class OmekaDirectoryCommand
      */
     private function renderTable(SymfonyStyle $io, array $rows): int
     {
-        $tableRows = array_map(static function (array $r): array {
+        $tableRows = \array_map(static function (array $r): array {
             $liveVal = $r['live'] ?? null;
             $live = match (true) {
-                $liveVal === true  => '<info>yes</info>',
-                $liveVal === false => '<comment>no</comment>',
-                default            => '—',
+                true === $liveVal => '<info>yes</info>',
+                false === $liveVal => '<comment>no</comment>',
+                default => '—',
             };
             $licenseVal = $r['license'] ?? '—';
             $license = match ($licenseVal) {
-                'cc0'        => '<info>CC0</info>',
-                'pd'         => '<info>Public Domain</info>',
-                'cc'         => '<info>' . ($r['licenseDetail'] ?? 'CC') . '</info>',
+                'cc0' => '<info>CC0</info>',
+                'pd' => '<info>Public Domain</info>',
+                'cc' => '<info>'.($r['licenseDetail'] ?? 'CC').'</info>',
                 'restricted' => '<comment>restricted</comment>',
-                'unknown'    => '?',
-                default      => '—',
+                'unknown' => '?',
+                default => '—',
             };
+
             return [
                 $r['type'] ?? '?',
-                substr($r['name'] ?? '', 0, 38),
-                substr($r['url'] ?? '', 0, 45),
+                \substr($r['name'] ?? '', 0, 38),
+                \substr($r['url'] ?? '', 0, 45),
                 $live,
                 $r['omekaVersion'] ?? '—',
                 $r['totalItems'] ?? '—',
@@ -231,7 +225,7 @@ final class OmekaDirectoryCommand
      */
     private function writeJsonl(SymfonyStyle $io, array $rows, ?string $outputPath, bool $force): int
     {
-        $path = $outputPath ?? sprintf('%s/omeka-directory.jsonl', rtrim((string) getcwd(), '/'));
+        $path = $outputPath ?? \sprintf('%s/omeka-directory.jsonl', \rtrim((string) \getcwd(), '/'));
 
         $writer = JsonlWriter::open(
             $path,
@@ -246,7 +240,7 @@ final class OmekaDirectoryCommand
 
         $result = $writer->finish();
 
-        $io->success(sprintf(
+        $io->success(\sprintf(
             'Wrote %d rows → %s',
             $result->state->getStats()->getRows(),
             $path,

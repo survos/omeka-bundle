@@ -7,11 +7,11 @@ namespace Survos\OmekaBundle;
 use Survos\OmekaBundle\Client\OmekaClient;
 use Survos\OmekaBundle\Client\OmekaClientRegistry;
 use Survos\OmekaBundle\Command\OmekaCrawlCommand;
-use Survos\OmekaBundle\Command\OmekaDirectoryCommand;
+use Survos\OmekaBundle\Command\OmekaCreateItemCommand;
 use Survos\OmekaBundle\Command\OmekaCreateResourcesCommand;
 use Survos\OmekaBundle\Command\OmekaCreateSiteCommand;
-use Survos\OmekaBundle\Command\OmekaCreateItemCommand;
 use Survos\OmekaBundle\Command\OmekaCustomVocabTermsCommand;
+use Survos\OmekaBundle\Command\OmekaDirectoryCommand;
 use Survos\OmekaBundle\Command\OmekaListItemsCommand;
 use Survos\OmekaBundle\Command\OmekaListPropertiesCommand;
 use Survos\OmekaBundle\Command\OmekaListResourceTemplatesCommand;
@@ -28,11 +28,10 @@ use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\HttpClient\CachingHttpClient;
-use Symfony\Component\HttpClient\RetryableHttpClient;
 use Symfony\Component\HttpClient\Retry\GenericRetryStrategy;
+use Symfony\Component\HttpClient\RetryableHttpClient;
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-use function array_key_first;
 
 final class SurvosOmekaBundle extends AbstractBundle
 {
@@ -98,7 +97,7 @@ final class SurvosOmekaBundle extends AbstractBundle
     {
         $clients = $config['clients'] ?? [];
 
-        if ($clients === []) {
+        if ([] === $clients) {
             $builder->autowire(OmekaClient::class)
                 ->setAutoconfigured(true)
                 ->setArgument('$apiUrl', '%env(OMEKA_API_URL)%')
@@ -108,7 +107,7 @@ final class SurvosOmekaBundle extends AbstractBundle
         }
 
         foreach ($clients as $name => $clientConfig) {
-            $builder->register('omeka.' . $name, OmekaClient::class)
+            $builder->register('omeka.'.$name, OmekaClient::class)
                 ->setAutowired(true)
                 ->setAutoconfigured(true)
                 ->setArgument('$apiUrl', $clientConfig['api_url'] ?? '%env(OMEKA_API_URL)%')
@@ -117,14 +116,14 @@ final class SurvosOmekaBundle extends AbstractBundle
                 ->addTag('omeka.client', ['name' => $name]);
         }
 
-        if ($clients !== []) {
+        if ([] !== $clients) {
             $defaultName = $clients['default'] ?? null;
-            if ($defaultName === null) {
-                $defaultName = array_key_first($clients);
+            if (null === $defaultName) {
+                $defaultName = \array_key_first($clients);
             }
 
-            if ($defaultName !== null) {
-                $builder->setAlias(OmekaClient::class, 'omeka.' . $defaultName)
+            if (null !== $defaultName) {
+                $builder->setAlias(OmekaClient::class, 'omeka.'.$defaultName)
                     ->setPublic(false);
             }
         }

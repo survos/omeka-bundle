@@ -9,8 +9,6 @@ use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use function count;
-use function implode;
 
 #[AsCommand('omeka:custom-vocab:terms', 'List terms from an Omeka Custom Vocab')]
 final class OmekaCustomVocabTermsCommand
@@ -26,12 +24,13 @@ final class OmekaCustomVocabTermsCommand
     ): int {
         $terms = $this->omeka->getCustomVocabTerms($label);
 
-        if (count($terms) === 0) {
+        if (0 === \count($terms)) {
             $io->warning('No terms returned.');
+
             return Command::SUCCESS;
         }
 
-        $io->writeln(implode("\n", $terms));
+        $io->writeln(\implode("\n", $terms));
 
         return Command::SUCCESS;
     }

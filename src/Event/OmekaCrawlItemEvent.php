@@ -33,10 +33,10 @@ final class OmekaCrawlItemEvent
     public bool $skip = false;
 
     /**
-     * @param array<string,mixed> $row        The item data (raw JSON-LD or normalized). Mutable.
-     * @param string              $siteUrl    The Omeka-S site base URL being crawled
-     * @param int|null            $itemSetId  The item set being crawled, or null if crawling all
-     * @param int                 $index      Zero-based position of this item within the current crawl
+     * @param array<string,mixed> $row       The item data (raw JSON-LD or normalized). Mutable.
+     * @param string              $siteUrl   The Omeka-S site base URL being crawled
+     * @param int|null            $itemSetId The item set being crawled, or null if crawling all
+     * @param int                 $index     Zero-based position of this item within the current crawl
      */
     public function __construct(
         public array $row,

@@ -7,25 +7,6 @@ namespace Survos\OmekaBundle\Crawler;
 use Survos\DataContracts\Util\Arrays;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-use function array_key_exists;
-use function array_map;
-use function explode;
-use function hrtime;
-use function is_array;
-use function is_int;
-use function is_string;
-use function ltrim;
-use function min;
-use function preg_match;
-use function preg_replace;
-use function rtrim;
-use function sprintf;
-use function str_contains;
-use function str_replace;
-use function strtolower;
-use function trim;
-use function urlencode;
-use function usleep;
 
 /**
  * Read-only crawler for any public Omeka-S or Omeka Classic installation.
@@ -57,8 +38,8 @@ final class OmekaPublicCrawler
 
     /**
      * @param int $minRequestIntervalMs Minimum gap between requests this crawler sends. Small
-     *        library-hosted installs share one Apache box, so be polite. Retries/backoff on
-     *        429 and 5xx live one layer down, in the retrying client the bundle wires in.
+     *                                  library-hosted installs share one Apache box, so be polite. Retries/backoff on
+     *                                  429 and 5xx live one layer down, in the retrying client the bundle wires in.
      */
     public function __construct(
         private readonly HttpClientInterface $httpClient,
@@ -82,15 +63,15 @@ final class OmekaPublicCrawler
      */
     public function resolveApiUrl(string $input): string
     {
-        $url = rtrim(trim($input), '/');
-        $url = preg_replace('#/s/[^/]+(/.*)?$#', '', $url) ?? $url;
+        $url = \rtrim(\trim($input), '/');
+        $url = \preg_replace('#/s/[^/]+(/.*)?$#', '', $url) ?? $url;
 
         // Strip any /api/<resource> suffix, leaving just /api
-        if (preg_match('#^(https?://[^/]+(?:/[^/]+)*?)/api(/.*)?$#i', $url, $m)) {
-            return $m[1] . '/api';
+        if (\preg_match('#^(https?://[^/]+(?:/[^/]+)*?)/api(/.*)?$#i', $url, $m)) {
+            return $m[1].'/api';
         }
 
-        return $url . '/api';
+        return $url.'/api';
     }
 
     /**
@@ -100,12 +81,12 @@ final class OmekaPublicCrawler
      */
     public function siteSlug(string $siteUrl): string
     {
-        $url = rtrim(trim($siteUrl), '/');
-        if (preg_match('#^https?://([^/]+)#', $url, $m)) {
+        $url = \rtrim(\trim($siteUrl), '/');
+        if (\preg_match('#^https?://([^/]+)#', $url, $m)) {
             return $m[1];
         }
 
-        return str_replace(['https://', 'http://', '/'], ['', '', '-'], $url);
+        return \str_replace(['https://', 'http://', '/'], ['', '', '-'], $url);
     }
 
     /**
@@ -140,28 +121,28 @@ final class OmekaPublicCrawler
     {
         $apiUrl = $this->resolveApiUrl($siteUrl);
 
-        $nullResult = static fn(string $error): array => [
-            'version'       => null,
-            'apiUrl'        => null,
-            'omekaVersion'  => null,
-            'totalItems'    => 0,
-            'license'       => null,
+        $nullResult = static fn (string $error): array => [
+            'version' => null,
+            'apiUrl' => null,
+            'omekaVersion' => null,
+            'totalItems' => 0,
+            'license' => null,
             'licenseDetail' => null,
-            'error'         => $error,
+            'error' => $error,
         ];
 
         try {
             // Fetch 25 items — enough for a license sample, cached on repeat runs
             $this->throttle();
-            $response = $this->httpClient->request('GET', sprintf('%s/items?per_page=25', $apiUrl), [
+            $response = $this->httpClient->request('GET', \sprintf('%s/items?per_page=25', $apiUrl), [
                 'timeout' => $timeoutSeconds,
             ]);
 
-            $status  = $response->getStatusCode();
+            $status = $response->getStatusCode();
             $headers = $response->getHeaders(false);
 
-            if ($status !== 200) {
-                return $nullResult(sprintf('HTTP %d', $status));
+            if (200 !== $status) {
+                return $nullResult(\sprintf('HTTP %d', $status));
             }
 
             /** @var array<int,array<string,mixed>> $items */
@@ -170,28 +151,30 @@ final class OmekaPublicCrawler
             // Omeka S: header is "omeka-s-total-results"
             if (isset($headers['omeka-s-total-results'])) {
                 [$license, $detail] = $this->sampleLicenseFromOmekaS($items);
+
                 return [
-                    'version'       => 's',
-                    'apiUrl'        => $apiUrl,
-                    'omekaVersion'  => $headers['omeka-s-version'][0] ?? null,
-                    'totalItems'    => (int) ($headers['omeka-s-total-results'][0] ?? 0),
-                    'license'       => $license,
+                    'version' => 's',
+                    'apiUrl' => $apiUrl,
+                    'omekaVersion' => $headers['omeka-s-version'][0] ?? null,
+                    'totalItems' => (int) ($headers['omeka-s-total-results'][0] ?? 0),
+                    'license' => $license,
                     'licenseDetail' => $detail,
-                    'error'         => null,
+                    'error' => null,
                 ];
             }
 
             // Omeka Classic: header is "omeka-total-results" (no "-s-")
             if (isset($headers['omeka-total-results'])) {
                 [$license, $detail] = $this->sampleLicenseFromClassic($items);
+
                 return [
-                    'version'       => 'classic',
-                    'apiUrl'        => $apiUrl,
-                    'omekaVersion'  => null,
-                    'totalItems'    => (int) ($headers['omeka-total-results'][0] ?? 0),
-                    'license'       => $license,
+                    'version' => 'classic',
+                    'apiUrl' => $apiUrl,
+                    'omekaVersion' => null,
+                    'totalItems' => (int) ($headers['omeka-total-results'][0] ?? 0),
+                    'license' => $license,
                     'licenseDetail' => $detail,
-                    'error'         => null,
+                    'error' => null,
                 ];
             }
 
@@ -213,13 +196,14 @@ final class OmekaPublicCrawler
      * The most permissive category found in the sample wins.
      *
      * @param array<int,array<string,mixed>> $items
+     *
      * @return array{0: string, 1: string|null}
      */
     public function sampleLicenseFromOmekaS(array $items): array
     {
-        $best     = 'unknown';
+        $best = 'unknown';
         $bestRank = 0;
-        $detail   = null;
+        $detail = null;
 
         foreach ($items as $item) {
             // dcterms:license is typically a URI value (@id or @value)
@@ -228,9 +212,9 @@ final class OmekaPublicCrawler
                 [$cat, $label] = $this->classifyLicenseString((string) $val);
                 $rank = self::LICENSE_RANK[$cat];
                 if ($rank > $bestRank) {
-                    $best     = $cat;
+                    $best = $cat;
                     $bestRank = $rank;
-                    $detail   = $label;
+                    $detail = $label;
                 }
             }
 
@@ -240,9 +224,9 @@ final class OmekaPublicCrawler
                 [$cat, $label] = $this->classifyLicenseString((string) $val);
                 $rank = self::LICENSE_RANK[$cat];
                 if ($rank > $bestRank) {
-                    $best     = $cat;
+                    $best = $cat;
                     $bestRank = $rank;
-                    $detail   = $label;
+                    $detail = $label;
                 }
             }
         }
@@ -256,27 +240,28 @@ final class OmekaPublicCrawler
      * Classic items use element_texts with element name "Rights".
      *
      * @param array<int,array<string,mixed>> $items
+     *
      * @return array{0: string, 1: string|null}
      */
     public function sampleLicenseFromClassic(array $items): array
     {
-        $best     = 'unknown';
+        $best = 'unknown';
         $bestRank = 0;
-        $detail   = null;
+        $detail = null;
 
         foreach ($items as $item) {
             foreach ($item['element_texts'] ?? [] as $et) {
                 $name = $et['element']['name'] ?? '';
-                if ($name !== 'Rights' && $name !== 'License') {
+                if ('Rights' !== $name && 'License' !== $name) {
                     continue;
                 }
                 $val = $et['text'] ?? '';
                 [$cat, $label] = $this->classifyLicenseString((string) $val);
                 $rank = self::LICENSE_RANK[$cat];
                 if ($rank > $bestRank) {
-                    $best     = $cat;
+                    $best = $cat;
                     $bestRank = $rank;
-                    $detail   = $label;
+                    $detail = $label;
                 }
             }
         }
@@ -289,11 +274,11 @@ final class OmekaPublicCrawler
      * 'unknown' is 0 (no information), not treated as permissive.
      */
     private const LICENSE_RANK = [
-        'unknown'    => 0,
+        'unknown' => 0,
         'restricted' => 1,
-        'cc'         => 3,
-        'pd'         => 4,
-        'cc0'        => 5,
+        'cc' => 3,
+        'pd' => 4,
+        'cc0' => 5,
     ];
 
     /**
@@ -303,56 +288,58 @@ final class OmekaPublicCrawler
      */
     public function classifyLicenseString(string $value): array
     {
-        $lower = strtolower(trim($value));
+        $lower = \strtolower(\trim($value));
 
-        if ($lower === '') {
+        if ('' === $lower) {
             return ['unknown', null];
         }
 
         // CC0 — most permissive CC variant, essentially public domain dedication
-        if (str_contains($lower, 'creativecommons.org/publicdomain/zero')
-            || str_contains($lower, 'cc0')
-            || str_contains($lower, 'cc zero')
+        if (\str_contains($lower, 'creativecommons.org/publicdomain/zero')
+            || \str_contains($lower, 'cc0')
+            || \str_contains($lower, 'cc zero')
         ) {
             return ['cc0', 'CC0'];
         }
 
         // Public Domain (text assertion, not CC0 URI)
-        if (str_contains($lower, 'public domain')
-            || str_contains($lower, 'publicdomain')
-            || str_contains($lower, 'no known copyright')
+        if (\str_contains($lower, 'public domain')
+            || \str_contains($lower, 'publicdomain')
+            || \str_contains($lower, 'no known copyright')
         ) {
             return ['pd', 'Public Domain'];
         }
 
         // Any Creative Commons licence (by, by-sa, by-nc, by-nd, etc.)
-        if (str_contains($lower, 'creativecommons.org/licenses/')
-            || preg_match('#\bcc[ -]by\b#', $lower)
-            || str_contains($lower, 'creative commons')
+        if (\str_contains($lower, 'creativecommons.org/licenses/')
+            || \preg_match('#\bcc[ -]by\b#', $lower)
+            || \str_contains($lower, 'creative commons')
         ) {
             // Extract version slug from URI, e.g. "by-nc/4.0" → "CC BY-NC 4.0"
             $label = 'Creative Commons';
-            if (preg_match('#licenses/([a-z-]+)/([0-9.]+)#', $lower, $m)) {
-                $label = 'CC ' . strtoupper($m[1]) . ' ' . $m[2];
+            if (\preg_match('#licenses/([a-z-]+)/([0-9.]+)#', $lower, $m)) {
+                $label = 'CC '.strtoupper($m[1]).' '.$m[2];
             }
+
             return ['cc', $label];
         }
 
         // RightsStatements.org — often "in copyright" variants
-        if (str_contains($lower, 'rightsstatements.org')) {
-            if (str_contains($lower, 'nocopyright') || str_contains($lower, 'noc-')) {
+        if (\str_contains($lower, 'rightsstatements.org')) {
+            if (\str_contains($lower, 'nocopyright') || \str_contains($lower, 'noc-')) {
                 return ['pd', 'No Copyright (RightsStatements)'];
             }
-            return ['restricted', 'RightsStatements: ' . $value];
+
+            return ['restricted', 'RightsStatements: '.$value];
         }
 
         // Explicit restriction indicators
-        if (str_contains($lower, 'all rights reserved')
-            || str_contains($lower, 'copyright')
-            || str_contains($lower, '©')
-            || str_contains($lower, 'permission required')
-            || str_contains($lower, 'contact')
-            || str_contains($lower, 'may be protected')
+        if (\str_contains($lower, 'all rights reserved')
+            || \str_contains($lower, 'copyright')
+            || \str_contains($lower, '©')
+            || \str_contains($lower, 'permission required')
+            || \str_contains($lower, 'contact')
+            || \str_contains($lower, 'may be protected')
         ) {
             return ['restricted', $value];
         }
@@ -376,7 +363,7 @@ final class OmekaPublicCrawler
      */
     public function siteSlugFromUrl(string $siteUrl): ?string
     {
-        return preg_match('#/s/([^/?\#]+)#', $siteUrl, $m) ? $m[1] : null;
+        return \preg_match('#/s/([^/?\#]+)#', $siteUrl, $m) ? $m[1] : null;
     }
 
     /**
@@ -388,14 +375,14 @@ final class OmekaPublicCrawler
     public function resolveSiteId(string $siteUrl): ?int
     {
         $slug = $this->siteSlugFromUrl($siteUrl);
-        if ($slug === null) {
+        if (null === $slug) {
             return null;
         }
 
         $result = $this->fetchPage($this->resolveApiUrl($siteUrl), 'sites', ['slug' => $slug], 1, 1);
         $id = $result['results'][0]['o:id'] ?? null;
-        if (!is_int($id)) {
-            throw new \RuntimeException(sprintf('Omeka-S site "%s" not found at %s', $slug, $this->resolveApiUrl($siteUrl)));
+        if (!\is_int($id)) {
+            throw new \RuntimeException(\sprintf('Omeka-S site "%s" not found at %s', $slug, $this->resolveApiUrl($siteUrl)));
         }
 
         return $id;
@@ -408,7 +395,7 @@ final class OmekaPublicCrawler
      */
     public function getItemSets(string $siteUrl, int $page = 1, int $perPage = self::DEFAULT_PER_PAGE, ?int $siteId = null): array
     {
-        $query = $siteId !== null ? ['site_id' => $siteId] : [];
+        $query = null !== $siteId ? ['site_id' => $siteId] : [];
 
         return $this->fetchPage($this->resolveApiUrl($siteUrl), 'item_sets', $query, $page, $perPage);
     }
@@ -434,10 +421,10 @@ final class OmekaPublicCrawler
         ?int $siteId = null,
     ): \Generator {
         $query = [];
-        if ($itemSetId !== null) {
+        if (null !== $itemSetId) {
             $query['item_set_id'] = $itemSetId;
         }
-        if ($siteId !== null) {
+        if (null !== $siteId) {
             $query['site_id'] = $siteId;
         }
 
@@ -457,18 +444,19 @@ final class OmekaPublicCrawler
         int $perPage = self::DEFAULT_PER_PAGE,
         ?int $siteId = null,
     ): \Generator {
-        $query = $siteId !== null ? ['site_id' => $siteId] : [];
+        $query = null !== $siteId ? ['site_id' => $siteId] : [];
 
         return yield from $this->crawlResource($this->resolveApiUrl($siteUrl), 'media', $query, $perPage);
     }
 
     /**
      * @param array<string,mixed> $query
+     *
      * @return \Generator<int, array<string,mixed>, mixed, int>
      */
     private function crawlResource(string $apiUrl, string $resource, array $query, int $perPage): \Generator
     {
-        $perPage = min($perPage, self::MAX_PER_PAGE);
+        $perPage = \min($perPage, self::MAX_PER_PAGE);
         $page = 1;
         $yielded = 0;
 
@@ -479,11 +467,11 @@ final class OmekaPublicCrawler
 
             foreach ($rows as $row) {
                 yield $row;
-                $yielded++;
+                ++$yielded;
             }
 
-            $page++;
-        } while ($yielded < $total && $rows !== []);
+            ++$page;
+        } while ($yielded < $total && [] !== $rows);
 
         return $yielded;
     }
@@ -498,55 +486,56 @@ final class OmekaPublicCrawler
      *   so the JSONL stays sparse
      *
      * @param array<string,mixed> $raw Raw item from crawlItems()
+     *
      * @return array<string,mixed>
      */
     public function normalizeItem(array $raw): array
     {
-        if (isset($raw['element_texts']) && is_array($raw['element_texts'])) {
+        if (isset($raw['element_texts']) && \is_array($raw['element_texts'])) {
             return $this->normalizeClassicItem($raw);
         }
 
         // Use the item-level thumbnail if it's a real image (not a default placeholder).
         // Default placeholders look like …/application/asset/thumbnails/default.png
         $itemThumb = $raw['thumbnail_display_urls']['medium'] ?? null;
-        $isPlaceholder = $itemThumb === null
-            || str_contains($itemThumb, '/application/asset/thumbnails/')
-            || str_contains($itemThumb, '/asset/thumbnails/');
+        $isPlaceholder = null === $itemThumb
+            || \str_contains($itemThumb, '/application/asset/thumbnails/')
+            || \str_contains($itemThumb, '/asset/thumbnails/');
 
         // When the item-level thumbnail is a placeholder, try the first media record.
         $thumbnail = $isPlaceholder ? $this->resolveFirstMediaThumbnail($raw) : $itemThumb;
 
         $normalized = [
-            'id'           => $raw['o:id'] ?? null,
-            'url'          => $raw['@id'] ?? null,
-            'title'        => $raw['o:title'] ?? null,
+            'id' => $raw['o:id'] ?? null,
+            'url' => $raw['@id'] ?? null,
+            'title' => $raw['o:title'] ?? null,
             'resourceType' => $this->extractType($raw['@type'] ?? []),
-            'created'      => $this->extractDateValue($raw['o:created'] ?? null),
-            'modified'     => $this->extractDateValue($raw['o:modified'] ?? null),
-            'thumbnail'    => $thumbnail,
+            'created' => $this->extractDateValue($raw['o:created'] ?? null),
+            'modified' => $this->extractDateValue($raw['o:modified'] ?? null),
+            'thumbnail' => $thumbnail,
         ];
 
         // Walk every key that looks like a vocabulary property (contains ":")
         foreach ($raw as $key => $values) {
-            if (!is_array($values) || !str_contains($key, ':')) {
+            if (!\is_array($values) || !\str_contains($key, ':')) {
                 continue;
             }
 
             // Skip structural Omeka keys we've already handled or that aren't value arrays
-            if (!isset($values[0]) || !is_array($values[0]) || !array_key_exists('@value', $values[0])) {
+            if (!isset($values[0]) || !\is_array($values[0]) || !\array_key_exists('@value', $values[0])) {
                 continue;
             }
 
             $flatKey = $this->flattenPropertyKey($key);
             $extracted = $this->extractPropertyValues($values);
 
-            if ($extracted !== null) {
+            if (null !== $extracted) {
                 $normalized[$flatKey] = $extracted;
             }
         }
 
         /** @var array<string,mixed> $result */
-        $result = \Survos\DataContracts\Util\Arrays::sparse($normalized);
+        $result = Arrays::sparse($normalized);
 
         return $result;
     }
@@ -562,6 +551,7 @@ final class OmekaPublicCrawler
      * (element_texts[].element.name / .text, files[].url -> file_urls).
      *
      * @param array<string,mixed> $raw
+     *
      * @return array<string,mixed>
      */
     private function normalizeClassicItem(array $raw): array
@@ -570,32 +560,32 @@ final class OmekaPublicCrawler
         foreach ($raw['element_texts'] ?? [] as $et) {
             $name = $et['element']['name'] ?? null;
             $text = $et['text'] ?? null;
-            if (is_string($name) && is_string($text) && $text !== '') {
+            if (\is_string($name) && \is_string($text) && '' !== $text) {
                 $texts[$name][] = $text;
             }
         }
 
-        $one = static fn(string $name): ?string => $texts[$name][0] ?? null;
-        $many = static fn(string $name): array => $texts[$name] ?? [];
+        $one = static fn (string $name): ?string => $texts[$name][0] ?? null;
+        $many = static fn (string $name): array => $texts[$name] ?? [];
 
         $normalized = [
-            'id'           => $raw['id'] ?? null,
-            'url'          => $this->classicPublicItemUrl($raw['url'] ?? null),
-            'title'        => $one('Title'),
+            'id' => $raw['id'] ?? null,
+            'url' => $this->classicPublicItemUrl($raw['url'] ?? null),
+            'title' => $one('Title'),
             'resourceType' => $raw['item_type']['name'] ?? null,
-            'created'      => $raw['added'] ?? null,
-            'modified'     => $raw['modified'] ?? null,
-            'thumbnail'    => $this->resolveFirstClassicFileThumbnail($raw),
-            'description'  => $one('Description'),
-            'date'         => $one('Date'),
-            'creator'      => count($many('Creator')) > 1 ? $many('Creator') : $one('Creator'),
-            'subject'      => $many('Subject'),
-            'rights'       => $one('Rights') ?? $one('License'),
-            'language'     => $one('Language'),
+            'created' => $raw['added'] ?? null,
+            'modified' => $raw['modified'] ?? null,
+            'thumbnail' => $this->resolveFirstClassicFileThumbnail($raw),
+            'description' => $one('Description'),
+            'date' => $one('Date'),
+            'creator' => count($many('Creator')) > 1 ? $many('Creator') : $one('Creator'),
+            'subject' => $many('Subject'),
+            'rights' => $one('Rights') ?? $one('License'),
+            'language' => $one('Language'),
         ];
 
         /** @var array<string,mixed> $result */
-        $result = \Survos\DataContracts\Util\Arrays::sparse($normalized);
+        $result = Arrays::sparse($normalized);
 
         return $result;
     }
@@ -603,8 +593,8 @@ final class OmekaPublicCrawler
     /** http://host/api/items/181 -> http://host/items/show/181 */
     private function classicPublicItemUrl(mixed $apiUrl): ?string
     {
-        return is_string($apiUrl) && $apiUrl !== ''
-            ? preg_replace('#/api/items/(\d+)$#', '/items/show/$1', $apiUrl)
+        return \is_string($apiUrl) && '' !== $apiUrl
+            ? \preg_replace('#/api/items/(\d+)$#', '/items/show/$1', $apiUrl)
             : null;
     }
 
@@ -618,12 +608,12 @@ final class OmekaPublicCrawler
     private function resolveFirstClassicFileThumbnail(array $raw): ?string
     {
         $files = $raw['files'] ?? [];
-        if (!is_array($files) || $files === []) {
+        if (!\is_array($files) || [] === $files) {
             return null;
         }
 
         $firstFileUrl = $files[0]['url'] ?? null;
-        if (!is_string($firstFileUrl) || $firstFileUrl === '') {
+        if (!\is_string($firstFileUrl) || '' === $firstFileUrl) {
             return null;
         }
 
@@ -637,7 +627,7 @@ final class OmekaPublicCrawler
 
         $thumb = $file['file_urls']['fullsize'] ?? $file['file_urls']['thumbnail'] ?? null;
 
-        return is_string($thumb) && $thumb !== '' ? $thumb : null;
+        return \is_string($thumb) && '' !== $thumb ? $thumb : null;
     }
 
     // -------------------------------------------------------------------------
@@ -655,13 +645,13 @@ final class OmekaPublicCrawler
     private function resolveFirstMediaThumbnail(array $raw): ?string
     {
         $mediaLinks = $raw['o:media'] ?? [];
-        if (!is_array($mediaLinks) || $mediaLinks === []) {
+        if (!\is_array($mediaLinks) || [] === $mediaLinks) {
             return null;
         }
 
         // Take the first media link: {"@id": "https://…/api/media/N"}
         $firstMediaUrl = $mediaLinks[0]['@id'] ?? null;
-        if (!is_string($firstMediaUrl) || $firstMediaUrl === '') {
+        if (!\is_string($firstMediaUrl) || '' === $firstMediaUrl) {
             return null;
         }
 
@@ -677,9 +667,9 @@ final class OmekaPublicCrawler
         $thumb = $media['thumbnail_display_urls']['medium'] ?? null;
 
         // Reject placeholder/default thumbnails from the media record too
-        if (!is_string($thumb) || $thumb === ''
-            || str_contains($thumb, '/application/asset/thumbnails/')
-            || str_contains($thumb, '/asset/thumbnails/')
+        if (!\is_string($thumb) || '' === $thumb
+            || \str_contains($thumb, '/application/asset/thumbnails/')
+            || \str_contains($thumb, '/asset/thumbnails/')
         ) {
             return null;
         }
@@ -693,6 +683,7 @@ final class OmekaPublicCrawler
      * Returns ['results' => array<int,array>, 'total' => int].
      *
      * @param array<string,mixed> $extraQuery
+     *
      * @return array{results: array<int,array>, total: int}
      */
     private function fetchPage(
@@ -703,12 +694,12 @@ final class OmekaPublicCrawler
         int $perPage,
     ): array {
         $query = $extraQuery + [
-            'page'     => $page,
+            'page' => $page,
             'per_page' => $perPage,
         ];
 
         $this->throttle();
-        $response = $this->httpClient->request('GET', sprintf('%s/%s', $apiUrl, $resource), [
+        $response = $this->httpClient->request('GET', \sprintf('%s/%s', $apiUrl, $resource), [
             'query' => $query,
         ]);
 
@@ -719,7 +710,7 @@ final class OmekaPublicCrawler
 
         return [
             'results' => $results,
-            'total'   => $total,
+            'total' => $total,
         ];
     }
 
@@ -733,12 +724,12 @@ final class OmekaPublicCrawler
             return;
         }
 
-        $now = hrtime(true) / 1000;
+        $now = \hrtime(true) / 1000;
         $waitUs = (int) ($this->lastRequestAt + $this->minRequestIntervalMs * 1000 - $now);
         if ($this->lastRequestAt > 0 && $waitUs > 0) {
-            usleep($waitUs);
+            \usleep($waitUs);
         }
-        $this->lastRequestAt = hrtime(true) / 1000;
+        $this->lastRequestAt = \hrtime(true) / 1000;
     }
 
     /**
@@ -768,15 +759,16 @@ final class OmekaPublicCrawler
             'dcterms:relation',
         ];
 
-        if (str_contains($key, 'dcterms:')) {
-            $bare = ltrim(str_replace('dcterms:', '', $key));
-            return strtolower($bare);
+        if (\str_contains($key, 'dcterms:')) {
+            $bare = \ltrim(\str_replace('dcterms:', '', $key));
+
+            return \strtolower($bare);
         }
 
         // Namespace_property format for everything else
-        [$ns, $prop] = explode(':', $key, 2);
+        [$ns, $prop] = \explode(':', $key, 2);
 
-        return strtolower($ns) . '_' . strtolower($prop);
+        return \strtolower($ns).'_'.\strtolower($prop);
     }
 
     /**
@@ -787,6 +779,7 @@ final class OmekaPublicCrawler
      * No @value entries → null
      *
      * @param array<int,mixed> $values
+     *
      * @return string|array<int,string>|null
      */
     private function extractPropertyValues(array $values): string|array|null
@@ -794,21 +787,21 @@ final class OmekaPublicCrawler
         $extracted = [];
 
         foreach ($values as $v) {
-            if (!is_array($v)) {
+            if (!\is_array($v)) {
                 continue;
             }
 
             $val = $v['@value'] ?? $v['@id'] ?? $v['value_resource_id'] ?? null;
-            if ($val !== null) {
+            if (null !== $val) {
                 $extracted[] = (string) $val;
             }
         }
 
-        if ($extracted === []) {
+        if ([] === $extracted) {
             return null;
         }
 
-        return count($extracted) === 1 ? $extracted[0] : $extracted;
+        return 1 === count($extracted) ? $extracted[0] : $extracted;
     }
 
     /**
@@ -819,17 +812,17 @@ final class OmekaPublicCrawler
      */
     private function extractDateValue(?array $field): ?string
     {
-        if (!is_array($field)) {
+        if (!\is_array($field)) {
             return null;
         }
 
         $val = $field['@value'] ?? null;
 
-        return is_string($val) ? $val : null;
+        return \is_string($val) ? $val : null;
     }
 
     /**
-     * Pick the most specific RDF type from a @type array.
+     * Pick the most specific RDF type from a @var array.
      *
      * Omeka items always have "o:Item" as one type; the second type (if present)
      * is the resource class (e.g. "oc:OralHistory", "bibo:Document").
@@ -838,12 +831,12 @@ final class OmekaPublicCrawler
      */
     private function extractType(array|string $types): ?string
     {
-        if (is_string($types)) {
+        if (\is_string($types)) {
             return $types;
         }
 
         foreach ($types as $type) {
-            if ($type !== 'o:Item' && $type !== 'o:ItemSet') {
+            if ('o:Item' !== $type && 'o:ItemSet' !== $type) {
                 return $type;
             }
         }

@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Survos\OmekaBundle\Command;
 
-use DirectoryIterator;
-use JsonException;
-use RuntimeException;
 use Survos\OmekaBundle\Client\OmekaClient;
 use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -15,24 +12,6 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Yaml\Yaml;
-use function array_filter;
-use function array_is_list;
-use function array_key_exists;
-use function array_merge;
-use function array_values;
-use function class_exists;
-use function explode;
-use function file_get_contents;
-use function in_array;
-use function is_array;
-use function is_dir;
-use function is_int;
-use function is_string;
-use function json_decode;
-use function ltrim;
-use function sprintf;
-use function str_starts_with;
-use function strtolower;
 
 #[AsCommand('omeka:resources:create', 'Create or update Omeka resource templates')]
 final class OmekaCreateResourcesCommand
@@ -55,14 +34,15 @@ final class OmekaCreateResourcesCommand
         $configDir ??= 'config/omeka';
         $configDir = $this->resolvePath($configDir);
 
-        if (!is_dir($configDir)) {
-            throw new RuntimeException(sprintf('Config directory not found: %s', $configDir));
+        if (!\is_dir($configDir)) {
+            throw new \RuntimeException(\sprintf('Config directory not found: %s', $configDir));
         }
 
         $config = $this->loadConfig($configDir);
         $templates = $config['templates'];
-        if ($templates === []) {
-            $io->warning(sprintf('No templates found in %s.', $configDir));
+        if ([] === $templates) {
+            $io->warning(\sprintf('No templates found in %s.', $configDir));
+
             return Command::SUCCESS;
         }
 
@@ -77,8 +57,8 @@ final class OmekaCreateResourcesCommand
         $skipped = 0;
 
         foreach ($templates as $template) {
-            if (!is_array($template)) {
-                throw new RuntimeException('Template entry must be an object.');
+            if (!\is_array($template)) {
+                throw new \RuntimeException('Template entry must be an object.');
             }
 
             $label = $this->requireString($template, 'label');
@@ -87,10 +67,10 @@ final class OmekaCreateResourcesCommand
             $descriptionPropertyTerm = $this->optionalString($template, 'description_property');
 
             $resourceClassId = null;
-            if ($resourceClassTerm !== null) {
+            if (null !== $resourceClassTerm) {
                 $resourceClassId = $resourceClassIds[$resourceClassTerm] ?? null;
-                if (!is_int($resourceClassId)) {
-                    throw new RuntimeException(sprintf('Unknown resource class term: %s', $resourceClassTerm));
+                if (!\is_int($resourceClassId)) {
+                    throw new \RuntimeException(\sprintf('Unknown resource class term: %s', $resourceClassTerm));
                 }
             }
 
@@ -105,7 +85,7 @@ final class OmekaCreateResourcesCommand
             );
 
             $descriptionPropertyId = null;
-            if ($descriptionPropertyTerm !== null) {
+            if (null !== $descriptionPropertyTerm) {
                 $descriptionPropertyId = $this->ensurePropertyId(
                     $descriptionPropertyTerm,
                     $propertyIds,
@@ -130,11 +110,11 @@ final class OmekaCreateResourcesCommand
             $existing = $this->omeka->getResourceTemplateByLabel($label);
 
             if ($dryRun) {
-                $io->text(sprintf('Would %s template "%s".', $existing ? 'update' : 'create', $label));
+                $io->text(\sprintf('Would %s template "%s".', $existing ? 'update' : 'create', $label));
                 continue;
             }
 
-            if ($existing === null) {
+            if (null === $existing) {
                 $this->omeka->createResourceTemplate(
                     $label,
                     $resourceClassId,
@@ -142,14 +122,14 @@ final class OmekaCreateResourcesCommand
                     $descriptionPropertyId,
                     $properties,
                 );
-                $created++;
-                $io->text(sprintf('Created "%s".', $label));
+                ++$created;
+                $io->text(\sprintf('Created "%s".', $label));
                 continue;
             }
 
             if ($skipExisting) {
-                $skipped++;
-                $io->text(sprintf('Skipped "%s".', $label));
+                ++$skipped;
+                $io->text(\sprintf('Skipped "%s".', $label));
                 continue;
             }
 
@@ -161,11 +141,11 @@ final class OmekaCreateResourcesCommand
                 $descriptionPropertyId,
                 $properties,
             );
-            $updated++;
-            $io->text(sprintf('Updated "%s".', $label));
+            ++$updated;
+            $io->text(\sprintf('Updated "%s".', $label));
         }
 
-        $summary = sprintf(
+        $summary = \sprintf(
             'Templates processed: %d created, %d updated, %d skipped.',
             $created,
             $updated,
@@ -178,11 +158,11 @@ final class OmekaCreateResourcesCommand
 
     private function resolvePath(string $configDir): string
     {
-        if (str_starts_with($configDir, '/')) {
+        if (\str_starts_with($configDir, '/')) {
             return $configDir;
         }
 
-        return $this->projectDir . '/' . ltrim($configDir, '/');
+        return $this->projectDir.'/'.\ltrim($configDir, '/');
     }
 
     /**
@@ -194,20 +174,20 @@ final class OmekaCreateResourcesCommand
         $vocabularies = [];
         $properties = [];
 
-        foreach (new DirectoryIterator($configDir) as $fileInfo) {
+        foreach (new \DirectoryIterator($configDir) as $fileInfo) {
             if (!$fileInfo->isFile()) {
                 continue;
             }
 
-            $extension = strtolower($fileInfo->getExtension());
-            if (!in_array($extension, ['json', 'yaml', 'yml'], true)) {
+            $extension = \strtolower($fileInfo->getExtension());
+            if (!\in_array($extension, ['json', 'yaml', 'yml'], true)) {
                 continue;
             }
 
             $parsed = $this->parseTemplateFile($fileInfo->getPathname(), $extension);
-            $templates = array_merge($templates, $parsed['templates']);
-            $vocabularies = array_merge($vocabularies, $parsed['vocabularies']);
-            $properties = array_merge($properties, $parsed['properties']);
+            $templates = \array_merge($templates, $parsed['templates']);
+            $vocabularies = \array_merge($vocabularies, $parsed['vocabularies']);
+            $properties = \array_merge($properties, $parsed['properties']);
         }
 
         return [
@@ -222,41 +202,38 @@ final class OmekaCreateResourcesCommand
      */
     private function parseTemplateFile(string $path, string $extension): array
     {
-        $raw = file_get_contents($path);
-        if ($raw === false) {
-            throw new RuntimeException(sprintf('Failed reading template file: %s', $path));
+        $raw = \file_get_contents($path);
+        if (false === $raw) {
+            throw new \RuntimeException(\sprintf('Failed reading template file: %s', $path));
         }
 
-        if ($extension === 'json') {
+        if ('json' === $extension) {
             try {
-                $decoded = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
-            } catch (JsonException $exception) {
-                throw new RuntimeException(
-                    sprintf('Invalid JSON in %s: %s', $path, $exception->getMessage()),
-                    previous: $exception,
-                );
+                $decoded = \json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+            } catch (\JsonException $exception) {
+                throw new \RuntimeException(\sprintf('Invalid JSON in %s: %s', $path, $exception->getMessage()), previous: $exception);
             }
         } else {
-            if (!class_exists(Yaml::class)) {
-                throw new RuntimeException('symfony/yaml is required to parse YAML template files.');
+            if (!\class_exists(Yaml::class)) {
+                throw new \RuntimeException('symfony/yaml is required to parse YAML template files.');
             }
             $decoded = Yaml::parse($raw);
         }
 
-        if (!is_array($decoded)) {
-            throw new RuntimeException(sprintf('Template file must decode to an object or list: %s', $path));
+        if (!\is_array($decoded)) {
+            throw new \RuntimeException(\sprintf('Template file must decode to an object or list: %s', $path));
         }
 
         $templates = $decoded['templates'] ?? $decoded;
         $vocabularies = $decoded['vocabularies'] ?? [];
         $properties = $decoded['properties'] ?? [];
 
-        if (is_array($templates) && array_is_list($templates)) {
+        if (\is_array($templates) && \array_is_list($templates)) {
             $normalizedTemplates = $templates;
-        } elseif (is_array($templates) && isset($templates['label'])) {
+        } elseif (\is_array($templates) && isset($templates['label'])) {
             $normalizedTemplates = [$templates];
         } else {
-            throw new RuntimeException(sprintf('Template file must contain templates: %s', $path));
+            throw new \RuntimeException(\sprintf('Template file must contain templates: %s', $path));
         }
 
         $normalizedVocabularies = $this->normalizeList($vocabularies, 'vocabularies', $path);
@@ -271,15 +248,15 @@ final class OmekaCreateResourcesCommand
 
     private function normalizeList(mixed $value, string $label, string $path): array
     {
-        if ($value === null || $value === []) {
+        if (null === $value || [] === $value) {
             return [];
         }
 
-        if (!is_array($value)) {
-            throw new RuntimeException(sprintf('Invalid %s in %s.', $label, $path));
+        if (!\is_array($value)) {
+            throw new \RuntimeException(\sprintf('Invalid %s in %s.', $label, $path));
         }
 
-        if (array_is_list($value)) {
+        if (\array_is_list($value)) {
             return $value;
         }
 
@@ -302,7 +279,7 @@ final class OmekaCreateResourcesCommand
         foreach ($this->omeka->getResourceClasses() as $class) {
             $term = $class['o:term'] ?? null;
             $id = $class['o:id'] ?? null;
-            if (is_string($term) && $term !== '' && is_int($id)) {
+            if (\is_string($term) && '' !== $term && \is_int($id)) {
                 $map[$term] = $id;
             }
         }
@@ -316,7 +293,7 @@ final class OmekaCreateResourcesCommand
         foreach ($this->omeka->getVocabularies() as $vocab) {
             $prefix = $vocab['o:prefix'] ?? null;
             $id = $vocab['o:id'] ?? null;
-            if (is_string($prefix) && $prefix !== '' && is_int($id)) {
+            if (\is_string($prefix) && '' !== $prefix && \is_int($id)) {
                 $map[$prefix] = $id;
             }
         }
@@ -335,14 +312,14 @@ final class OmekaCreateResourcesCommand
         bool $dryRun,
     ): array {
         $properties = $template['properties'] ?? null;
-        if (!is_array($properties) || $properties === []) {
-            throw new RuntimeException(sprintf('Template "%s" has no properties.', $label));
+        if (!\is_array($properties) || [] === $properties) {
+            throw new \RuntimeException(\sprintf('Template "%s" has no properties.', $label));
         }
 
         $normalized = [];
         foreach ($properties as $property) {
-            if (!is_array($property)) {
-                throw new RuntimeException(sprintf('Template "%s" has invalid property entry.', $label));
+            if (!\is_array($property)) {
+                throw new \RuntimeException(\sprintf('Template "%s" has invalid property entry.', $label));
             }
 
             $term = $this->requireString($property, 'term');
@@ -360,18 +337,18 @@ final class OmekaCreateResourcesCommand
             $private = (bool) ($property['private'] ?? false);
 
             $dataTypes = $property['data_types'] ?? null;
-            if (is_string($dataTypes)) {
+            if (\is_string($dataTypes)) {
                 $dataTypes = [$dataTypes];
             }
-            if (!is_array($dataTypes)) {
+            if (!\is_array($dataTypes)) {
                 $dataTypes = ['literal'];
             }
 
-            $dataTypes = array_values(array_filter(
+            $dataTypes = \array_values(\array_filter(
                 $dataTypes,
-                static fn($value): bool => is_string($value) && $value !== '',
+                static fn ($value): bool => \is_string($value) && '' !== $value,
             ));
-            if ($dataTypes === []) {
+            if ([] === $dataTypes) {
                 $dataTypes = ['literal'];
             }
 
@@ -396,12 +373,12 @@ final class OmekaCreateResourcesCommand
         bool $dryRun,
     ): int {
         $propertyId = $propertyIds[$term] ?? null;
-        if (is_int($propertyId)) {
+        if (\is_int($propertyId)) {
             return $propertyId;
         }
 
-        if (!array_key_exists($term, $propertyDefinitions)) {
-            throw new RuntimeException(sprintf('Unknown property term: %s', $term));
+        if (!\array_key_exists($term, $propertyDefinitions)) {
+            throw new \RuntimeException(\sprintf('Unknown property term: %s', $term));
         }
 
         $definition = $propertyDefinitions[$term];
@@ -409,17 +386,17 @@ final class OmekaCreateResourcesCommand
         $comment = $this->optionalString($definition, 'comment');
         $localName = $this->optionalString($definition, 'local_name');
 
-        $parts = explode(':', $term, 2);
-        if ($localName === null) {
+        $parts = \explode(':', $term, 2);
+        if (null === $localName) {
             $localName = $parts[1] ?? null;
         }
-        if ($localName === null || $localName === '') {
-            throw new RuntimeException(sprintf('Missing local_name for property: %s', $term));
+        if (null === $localName || '' === $localName) {
+            throw new \RuntimeException(\sprintf('Missing local_name for property: %s', $term));
         }
 
         $prefix = $parts[0] ?? null;
-        if ($prefix === null || $prefix === '') {
-            throw new RuntimeException(sprintf('Invalid property term: %s', $term));
+        if (null === $prefix || '' === $prefix) {
+            throw new \RuntimeException(\sprintf('Invalid property term: %s', $term));
         }
 
         $vocabularyId = $this->ensureVocabularyId(
@@ -431,7 +408,8 @@ final class OmekaCreateResourcesCommand
         );
 
         if ($dryRun) {
-            $io->text(sprintf('Would create property "%s".', $term));
+            $io->text(\sprintf('Would create property "%s".', $term));
+
             return 0;
         }
 
@@ -445,8 +423,8 @@ final class OmekaCreateResourcesCommand
 
         $propertyIds = $this->propertyIdsByTerm();
         $propertyId = $propertyIds[$term] ?? null;
-        if (!is_int($propertyId)) {
-            throw new RuntimeException(sprintf('Failed creating property term: %s', $term));
+        if (!\is_int($propertyId)) {
+            throw new \RuntimeException(\sprintf('Failed creating property term: %s', $term));
         }
 
         return $propertyId;
@@ -460,12 +438,12 @@ final class OmekaCreateResourcesCommand
         bool $dryRun,
     ): int {
         $vocabularyId = $vocabularyIds[$prefix] ?? null;
-        if (is_int($vocabularyId)) {
+        if (\is_int($vocabularyId)) {
             return $vocabularyId;
         }
 
-        if (!array_key_exists($prefix, $vocabularyDefinitions)) {
-            throw new RuntimeException(sprintf('Unknown vocabulary prefix: %s', $prefix));
+        if (!\array_key_exists($prefix, $vocabularyDefinitions)) {
+            throw new \RuntimeException(\sprintf('Unknown vocabulary prefix: %s', $prefix));
         }
 
         $definition = $vocabularyDefinitions[$prefix];
@@ -473,7 +451,8 @@ final class OmekaCreateResourcesCommand
         $namespace = $this->optionalString($definition, 'namespace_uri');
 
         if ($dryRun) {
-            $io->text(sprintf('Would create vocabulary "%s".', $prefix));
+            $io->text(\sprintf('Would create vocabulary "%s".', $prefix));
+
             return 0;
         }
 
@@ -481,8 +460,8 @@ final class OmekaCreateResourcesCommand
 
         $vocabularyIds = $this->vocabularyIdsByPrefix();
         $vocabularyId = $vocabularyIds[$prefix] ?? null;
-        if (!is_int($vocabularyId)) {
-            throw new RuntimeException(sprintf('Failed creating vocabulary prefix: %s', $prefix));
+        if (!\is_int($vocabularyId)) {
+            throw new \RuntimeException(\sprintf('Failed creating vocabulary prefix: %s', $prefix));
         }
 
         return $vocabularyId;
@@ -492,8 +471,8 @@ final class OmekaCreateResourcesCommand
     {
         $indexed = [];
         foreach ($definitions as $definition) {
-            if (!is_array($definition)) {
-                throw new RuntimeException('Vocabulary definition must be an object.');
+            if (!\is_array($definition)) {
+                throw new \RuntimeException('Vocabulary definition must be an object.');
             }
             $prefix = $this->requireString($definition, 'prefix');
             $indexed[$prefix] = $definition;
@@ -506,8 +485,8 @@ final class OmekaCreateResourcesCommand
     {
         $indexed = [];
         foreach ($definitions as $definition) {
-            if (!is_array($definition)) {
-                throw new RuntimeException('Property definition must be an object.');
+            if (!\is_array($definition)) {
+                throw new \RuntimeException('Property definition must be an object.');
             }
             $term = $this->requireString($definition, 'term');
             $indexed[$term] = $definition;
@@ -519,8 +498,8 @@ final class OmekaCreateResourcesCommand
     private function requireString(array $data, string $key): string
     {
         $value = $data[$key] ?? null;
-        if (!is_string($value) || $value === '') {
-            throw new RuntimeException(sprintf('Missing or invalid "%s".', $key));
+        if (!\is_string($value) || '' === $value) {
+            throw new \RuntimeException(\sprintf('Missing or invalid "%s".', $key));
         }
 
         return $value;
@@ -529,7 +508,7 @@ final class OmekaCreateResourcesCommand
     private function optionalString(array $data, string $key): ?string
     {
         $value = $data[$key] ?? null;
-        if (!is_string($value) || $value === '') {
+        if (!\is_string($value) || '' === $value) {
             return null;
         }
 

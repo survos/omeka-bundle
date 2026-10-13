@@ -9,10 +9,6 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use function array_map;
-use function count;
-use function is_string;
-use function sprintf;
 
 #[AsCommand('omeka:items:list', 'List items from an Omeka API')]
 final class OmekaListItemsCommand
@@ -51,19 +47,19 @@ final class OmekaListItemsCommand
             sortOrder: $sortOrder,
         );
 
-        $rows = array_map(static function (array $item): array {
+        $rows = \array_map(static function (array $item): array {
             $id = $item['o:id'] ?? null;
             $title = $item['o:title'] ?? '';
-            if (!is_string($title) || $title === '') {
+            if (!\is_string($title) || '' === $title) {
                 $title = '[no title]';
             }
 
             return [$id, $title];
         }, $result->results);
 
-        $io->writeln(sprintf('Total results: %d', $result->totalResults));
+        $io->writeln(\sprintf('Total results: %d', $result->totalResults));
 
-        if (count($rows) > 0) {
+        if (\count($rows) > 0) {
             $io->table(['ID', 'Title'], $rows);
         } else {
             $io->warning('No items returned for this query.');

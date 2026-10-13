@@ -9,11 +9,12 @@ readonly class SearchResult
     public function __construct(
         public int $totalResults,
         public array $results,
-    ) {}
+    ) {
+    }
 
     public function isEmpty(): bool
     {
-        return $this->totalResults === 0;
+        return 0 === $this->totalResults;
     }
 
     public function count(): int

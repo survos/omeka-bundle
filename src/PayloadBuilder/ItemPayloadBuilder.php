@@ -9,7 +9,7 @@ use Survos\OmekaBundle\Model\Item;
 
 /**
  * Fluent builder for Omeka item payloads.
- * 
+ *
  * Usage:
  *   $item = $omeka->payloadBuilder(templateId: 5)
  *       ->set('dcterms:title', 'My Document')
@@ -28,7 +28,8 @@ final class ItemPayloadBuilder
     public function __construct(
         private OmekaClient $client,
         private ?int $templateId = null,
-    ) {}
+    ) {
+    }
 
     public function set(string $term, string|int|array $value): self
     {
@@ -51,40 +52,46 @@ final class ItemPayloadBuilder
     public function setUri(string $term, string $uri): self
     {
         $this->properties[$term][] = ['value' => $uri, 'type' => 'uri'];
+
         return $this;
     }
 
     public function setResource(string $term, int $resourceId): self
     {
         $this->properties[$term][] = ['value' => $resourceId, 'type' => 'resource:item'];
+
         return $this;
     }
 
     public function addMedia(string $path, ?string $title = null): self
     {
-        if ($title !== null) {
+        if (null !== $title) {
             $this->mediaFiles[] = ['path' => $path, 'title' => $title];
         } else {
             $this->mediaFiles[] = $path;
         }
+
         return $this;
     }
 
     public function inItemSet(int $itemSetId): self
     {
         $this->itemSetId = $itemSetId;
+
         return $this;
     }
 
     public function withClass(int $classId): self
     {
         $this->classId = $classId;
+
         return $this;
     }
 
     public function withTemplate(int $templateId): self
     {
         $this->templateId = $templateId;
+
         return $this;
     }
 
@@ -110,6 +117,7 @@ final class ItemPayloadBuilder
         $this->mediaFiles = [];
         $this->itemSetId = null;
         $this->classId = null;
+
         return $this;
     }
 }

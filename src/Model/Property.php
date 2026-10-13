@@ -13,7 +13,8 @@ readonly class Property
         public string $localName,
         public ?string $comment,
         public int $vocabularyId,
-    ) {}
+    ) {
+    }
 
     public static function fromArray(array $data): self
     {

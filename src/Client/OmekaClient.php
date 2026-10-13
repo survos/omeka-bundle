@@ -15,29 +15,6 @@ use Symfony\Component\Mime\Part\DataPart;
 use Symfony\Component\Mime\Part\Multipart\FormDataPart;
 use Symfony\Contracts\HttpClient\Exception\ClientExceptionInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-use function array_filter;
-use function array_key_last;
-use function array_keys;
-use function array_map;
-use function array_merge;
-use function array_values;
-use function basename;
-use function count;
-use function explode;
-use function in_array;
-use function is_array;
-use function is_int;
-use function is_string;
-use function json_decode;
-use function json_encode;
-use function rtrim;
-use function sprintf;
-use function str_contains;
-use function str_starts_with;
-use function str_ends_with;
-use function substr;
-use function trim;
-use function trigger_error;
 
 final class OmekaClient
 {
@@ -50,7 +27,7 @@ final class OmekaClient
         private ?string $keyIdentity = null,
         private ?string $keyCredential = null,
     ) {
-        $this->apiUrl = rtrim($this->apiUrl, '/');
+        $this->apiUrl = \rtrim($this->apiUrl, '/');
     }
 
     public function getApiUrl(): string
@@ -71,7 +48,7 @@ final class OmekaClient
         string $sortBy = 'id',
         string $sortOrder = 'desc',
     ): SearchResult {
-        $query = array_filter([
+        $query = \array_filter([
             'resource_template_id' => $resourceTemplateId,
             'resource_class_id' => $resourceClassId,
             'item_set_id' => $itemSetId,
@@ -81,7 +58,7 @@ final class OmekaClient
             'per_page' => $perPage,
             'sort_by' => $sortBy,
             'sort_order' => $sortOrder,
-        ], fn($v) => $v !== null);
+        ], fn ($v) => null !== $v);
 
         return $this->search('items', $query);
     }
@@ -89,6 +66,7 @@ final class OmekaClient
     public function getItem(int $id): Item
     {
         $data = $this->get("items/{$id}");
+
         return Item::fromArray($data);
     }
 
@@ -100,13 +78,13 @@ final class OmekaClient
         ?int $itemSetId = null,
         int $page = 1,
     ): SearchResult {
-        $params = array_filter([
+        $params = \array_filter([
             $fulltextSearch ? 'fulltext_search' : 'search' => $query,
             'resource_template_id' => $resourceTemplateId,
             'resource_class_id' => $resourceClassId,
             'item_set_id' => $itemSetId,
             'page' => $page,
-        ], fn($v) => $v !== null);
+        ], fn ($v) => null !== $v);
 
         return $this->search('items', $params);
     }
@@ -120,7 +98,7 @@ final class OmekaClient
     ): SearchResult {
         $propertyId = $this->getPropertyId($property);
 
-        $params = array_filter([
+        $params = \array_filter([
             'property' => [
                 [
                     'property' => $propertyId,
@@ -130,7 +108,7 @@ final class OmekaClient
             ],
             'resource_template_id' => $resourceTemplateId,
             'page' => $page,
-        ], fn($v) => $v !== null);
+        ], fn ($v) => null !== $v);
 
         return $this->search('items', $params);
     }
@@ -147,33 +125,33 @@ final class OmekaClient
     ): Item {
         $payload = $this->buildPayload($properties, $templateId);
 
-        if ($templateId !== null) {
+        if (null !== $templateId) {
             $payload['o:resource_template'] = ['o:id' => $templateId];
         }
-        if ($classId !== null) {
+        if (null !== $classId) {
             $payload['o:resource_class'] = ['o:id' => $classId];
         }
         $itemSetRefs = [];
-        if ($itemSetId !== null) {
+        if (null !== $itemSetId) {
             $itemSetRefs[] = ['o:id' => $itemSetId];
         }
-        if ($itemSetIds !== null) {
+        if (null !== $itemSetIds) {
             foreach ($itemSetIds as $id) {
                 $itemSetRefs[] = ['o:id' => $id];
             }
         }
-        if ($itemSetRefs !== []) {
+        if ([] !== $itemSetRefs) {
             $payload['o:item_set'] = $itemSetRefs;
         }
 
-        if ($siteIds !== null) {
-            $payload['o:site'] = array_map(static fn(int $id): array => ['o:id' => $id], $siteIds);
+        if (null !== $siteIds) {
+            $payload['o:site'] = \array_map(static fn (int $id): array => ['o:id' => $id], $siteIds);
         }
-        if ($isPublic !== null) {
+        if (null !== $isPublic) {
             $payload['o:is_public'] = $isPublic;
         }
 
-        if ($mediaFiles !== null && count($mediaFiles) > 0) {
+        if (null !== $mediaFiles && \count($mediaFiles) > 0) {
             $data = $this->postWithMedia('items', $payload, $mediaFiles);
         } else {
             $data = $this->post('items', $payload);
@@ -193,6 +171,7 @@ final class OmekaClient
         }
 
         $data = $this->put("items/{$id}", $current);
+
         return Item::fromArray($data);
     }
 
@@ -204,23 +183,24 @@ final class OmekaClient
 
         foreach ($currentSites as $site) {
             $siteId = $site['o:id'] ?? null;
-            if (is_int($siteId)) {
+            if (\is_int($siteId)) {
                 $merged[$siteId] = true;
             }
         }
 
         foreach ($siteIds as $siteId) {
-            if (is_int($siteId)) {
+            if (\is_int($siteId)) {
                 $merged[$siteId] = true;
             }
         }
 
-        $current['o:site'] = array_map(
-            static fn(int $siteId): array => ['o:id' => $siteId],
-            array_keys($merged),
+        $current['o:site'] = \array_map(
+            static fn (int $siteId): array => ['o:id' => $siteId],
+            \array_keys($merged),
         );
 
         $data = $this->put("items/{$id}", $current);
+
         return Item::fromArray($data);
     }
 
@@ -242,7 +222,7 @@ final class OmekaClient
             'o:item' => ['o:id' => $itemId],
         ];
 
-        if ($title !== null) {
+        if (null !== $title) {
             $payload['dcterms:title'] = [[
                 'property_id' => $this->getPropertyId('dcterms:title'),
                 'type' => 'literal',
@@ -250,11 +230,12 @@ final class OmekaClient
             ]];
         }
 
-        if ($metadata !== null) {
-            $payload = array_merge($payload, $this->buildPayload($metadata));
+        if (null !== $metadata) {
+            $payload = \array_merge($payload, $this->buildPayload($metadata));
         }
 
         $data = $this->postWithMedia('media', $payload, [$filePath]);
+
         return Media::fromArray($data);
     }
 
@@ -271,7 +252,7 @@ final class OmekaClient
             'ingest_url' => $url,
         ];
 
-        if ($title !== null) {
+        if (null !== $title) {
             $payload['dcterms:title'] = [[
                 'property_id' => $this->getPropertyId('dcterms:title'),
                 'type' => 'literal',
@@ -279,11 +260,12 @@ final class OmekaClient
             ]];
         }
 
-        if ($metadata !== null) {
-            $payload = array_merge($payload, $this->buildPayload($metadata));
+        if (null !== $metadata) {
+            $payload = \array_merge($payload, $this->buildPayload($metadata));
         }
 
         $data = $this->post('media', $payload);
+
         return Media::fromArray($data);
     }
 
@@ -292,21 +274,24 @@ final class OmekaClient
     public function getResourceTemplates(): array
     {
         $result = $this->search('resource_templates', ['per_page' => 100]);
-        return array_map(ResourceTemplate::fromArray(...), $result->results);
+
+        return \array_map(ResourceTemplate::fromArray(...), $result->results);
     }
 
     public function getResourceTemplate(int $id): ResourceTemplate
     {
         $data = $this->get("resource_templates/{$id}");
+
         return ResourceTemplate::fromArray($data);
     }
 
     public function getResourceTemplateByLabel(string $label): ?ResourceTemplate
     {
         $result = $this->search('resource_templates', ['label' => $label]);
-        if (count($result->results) === 0) {
+        if (0 === \count($result->results)) {
             return null;
         }
+
         return ResourceTemplate::fromArray($result->results[0]);
     }
 
@@ -329,17 +314,17 @@ final class OmekaClient
             'o:label' => $label,
         ];
 
-        if ($resourceClassId !== null) {
+        if (null !== $resourceClassId) {
             $payload['o:resource_class'] = ['o:id' => $resourceClassId];
         }
-        if ($titlePropertyId !== null) {
+        if (null !== $titlePropertyId) {
             $payload['o:title_property'] = ['o:id' => $titlePropertyId];
         }
-        if ($descriptionPropertyId !== null) {
+        if (null !== $descriptionPropertyId) {
             $payload['o:description_property'] = ['o:id' => $descriptionPropertyId];
         }
 
-        $payload['o:resource_template_property'] = array_values(array_map(
+        $payload['o:resource_template_property'] = \array_values(\array_map(
             static function (array $property): array {
                 return [
                     'o:property' => ['o:id' => $property['property_id']],
@@ -375,17 +360,17 @@ final class OmekaClient
         $current = $this->get("resource_templates/{$id}");
         $current['o:label'] = $label;
 
-        $current['o:resource_class'] = $resourceClassId !== null
+        $current['o:resource_class'] = null !== $resourceClassId
             ? ['o:id' => $resourceClassId]
             : null;
-        $current['o:title_property'] = $titlePropertyId !== null
+        $current['o:title_property'] = null !== $titlePropertyId
             ? ['o:id' => $titlePropertyId]
             : null;
-        $current['o:description_property'] = $descriptionPropertyId !== null
+        $current['o:description_property'] = null !== $descriptionPropertyId
             ? ['o:id' => $descriptionPropertyId]
             : null;
 
-        $current['o:resource_template_property'] = array_values(array_map(
+        $current['o:resource_template_property'] = \array_values(\array_map(
             static function (array $property): array {
                 return [
                     'o:property' => ['o:id' => $property['property_id']],
@@ -427,7 +412,7 @@ final class OmekaClient
 
             $types = [];
             foreach ($prop['o:data_type'] ?? [] as $dt) {
-                $types[] = is_array($dt) ? $dt['name'] : $dt;
+                $types[] = \is_array($dt) ? $dt['name'] : $dt;
             }
             if (empty($types)) {
                 $types = ['literal'];
@@ -440,6 +425,7 @@ final class OmekaClient
         }
 
         $this->templatePropertyCache[$templateId] = $properties;
+
         return $properties;
     }
 
@@ -459,25 +445,28 @@ final class OmekaClient
             foreach ($result->results as $prop) {
                 $properties[$prop['o:term']] = Property::fromArray($prop);
             }
-            $page++;
-        } while (count($result->results) === 100);
+            ++$page;
+        } while (100 === \count($result->results));
 
         $this->propertyCache = $properties;
+
         return $properties;
     }
 
     public function getProperty(string $term): ?Property
     {
         $properties = $this->getProperties();
+
         return $properties[$term] ?? null;
     }
 
     public function getPropertyId(string $term): int
     {
         $property = $this->getProperty($term);
-        if ($property === null) {
+        if (null === $property) {
             throw new OmekaApiException("Unknown property term: {$term}");
         }
+
         return $property->id;
     }
 
@@ -495,7 +484,7 @@ final class OmekaClient
             'o:label' => $label,
         ];
 
-        if ($namespaceUri !== null) {
+        if (null !== $namespaceUri) {
             $payload['o:namespace_uri'] = $namespaceUri;
         }
 
@@ -510,12 +499,12 @@ final class OmekaClient
         int $vocabularyId,
     ): array {
         if ($vocabularyId <= 0) {
-            throw new OmekaApiException(sprintf('Invalid vocabulary id for property term: %s', $term));
+            throw new OmekaApiException(\sprintf('Invalid vocabulary id for property term: %s', $term));
         }
 
         $prefix = null;
-        $parts = explode(':', $term, 2);
-        if (count($parts) === 2 && $parts[0] !== '') {
+        $parts = \explode(':', $term, 2);
+        if (2 === \count($parts) && '' !== $parts[0]) {
             $prefix = $parts[0];
         }
 
@@ -525,7 +514,7 @@ final class OmekaClient
             'o:local_name' => $localName,
         ];
 
-        if ($comment !== null) {
+        if (null !== $comment) {
             $basePayload['o:comment'] = $comment;
         }
 
@@ -537,19 +526,19 @@ final class OmekaClient
             $payloadVariants[] = $payloadBase + ['o:vocabulary' => $vocabularyId];
         }
 
-        if ($prefix !== null) {
+        if (null !== $prefix) {
             foreach ($payloadBases as $payloadBase) {
                 $payloadVariants[] = $payloadBase + [
                     'o:vocabulary' => ['o:id' => $vocabularyId, 'o:prefix' => $prefix],
                 ];
                 $payloadVariants[] = $payloadBase + [
-                    'o:vocabulary' => ['@id' => $this->apiUrl . '/vocabularies/' . $vocabularyId],
+                    'o:vocabulary' => ['@id' => $this->apiUrl.'/vocabularies/'.$vocabularyId],
                 ];
             }
         }
 
         $vocabularyResource = $this->get("vocabularies/{$vocabularyId}");
-        if (is_array($vocabularyResource)) {
+        if (\is_array($vocabularyResource)) {
             foreach ($payloadBases as $payloadBase) {
                 $payloadVariants[] = $payloadBase + ['o:vocabulary' => $vocabularyResource];
             }
@@ -561,18 +550,15 @@ final class OmekaClient
                 return $this->post('properties', $payload);
             } catch (OmekaApiException $exception) {
                 $lastException = $exception;
-                if (!str_contains($exception->getMessage(), 'o:vocabulary')) {
+                if (!\str_contains($exception->getMessage(), 'o:vocabulary')) {
                     throw $exception;
                 }
             }
         }
 
-        if ($lastException !== null) {
-            $payloadDump = json_encode($payloadVariants[array_key_last($payloadVariants)]) ?: 'unencodable';
-            throw new OmekaApiException(
-                sprintf('Property create failed after retries. Payload: %s', $payloadDump),
-                previous: $lastException,
-            );
+        if (null !== $lastException) {
+            $payloadDump = \json_encode($payloadVariants[\array_key_last($payloadVariants)]) ?: 'unencodable';
+            throw new OmekaApiException(\sprintf('Property create failed after retries. Payload: %s', $payloadDump), previous: $lastException);
         }
 
         throw new OmekaApiException('Property create failed without a response.');
@@ -598,7 +584,7 @@ final class OmekaClient
             'o:is_public' => $isPublic,
         ];
 
-        if ($theme !== null) {
+        if (null !== $theme) {
             $payload['o:theme'] = $theme;
         }
 
@@ -622,6 +608,7 @@ final class OmekaClient
     public function createSitePage(int $siteId, array $payload): array
     {
         $payload['o:site'] = ['o:id' => $siteId];
+
         return $this->post('site_pages', $payload);
     }
 
@@ -636,15 +623,15 @@ final class OmekaClient
     public function getCustomVocabTerms(string $label): array
     {
         $result = $this->search('custom_vocabs', ['label' => $label]);
-        if (count($result->results) === 0) {
+        if (0 === \count($result->results)) {
             return [];
         }
 
         $vocab = $result->results[0];
         $terms = $vocab['o:terms'] ?? '';
 
-        if (is_string($terms)) {
-            return array_filter(array_map('trim', explode("\n", $terms)));
+        if (\is_string($terms)) {
+            return \array_filter(\array_map('trim', \explode("\n", $terms)));
         }
 
         return $terms;
@@ -666,7 +653,7 @@ final class OmekaClient
     {
         $payload = $this->buildPayload($properties);
 
-        if ($isPublic !== null) {
+        if (null !== $isPublic) {
             $payload['o:is_public'] = $isPublic;
         }
 
@@ -681,7 +668,7 @@ final class OmekaClient
     ): SearchResult {
         $propertyId = $this->getPropertyId($property);
 
-        $params = array_filter([
+        $params = \array_filter([
             'property' => [
                 [
                     'property' => $propertyId,
@@ -690,18 +677,18 @@ final class OmekaClient
                 ],
             ],
             'page' => $page,
-        ], fn($v) => $v !== null);
+        ], fn ($v) => null !== $v);
 
         return $this->search('item_sets', $params);
     }
 
     public function getMedia(int $page = 1, int $perPage = 25, ?int $itemId = null): SearchResult
     {
-        return $this->search('media', array_filter([
+        return $this->search('media', \array_filter([
             'page' => $page,
             'per_page' => $perPage,
             'item_id' => $itemId,
-        ], fn($v) => $v !== null));
+        ], fn ($v) => null !== $v));
     }
 
     public function filterMediaByProperty(
@@ -712,7 +699,7 @@ final class OmekaClient
     ): SearchResult {
         $propertyId = $this->getPropertyId($property);
 
-        $params = array_filter([
+        $params = \array_filter([
             'property' => [
                 [
                     'property' => $propertyId,
@@ -721,7 +708,7 @@ final class OmekaClient
                 ],
             ],
             'page' => $page,
-        ], fn($v) => $v !== null);
+        ], fn ($v) => null !== $v);
 
         return $this->search('media', $params);
     }
@@ -730,7 +717,7 @@ final class OmekaClient
 
     public function buildPayload(array $properties, ?int $templateId = null): array
     {
-        $templateProperties = $templateId !== null
+        $templateProperties = null !== $templateId
             ? $this->getTemplateProperties($templateId)
             : [];
 
@@ -738,13 +725,13 @@ final class OmekaClient
 
         foreach ($properties as $term => $values) {
             // Normalize to array
-            if (!is_array($values) || (isset($values['value']) || isset($values['@value']))) {
+            if (!\is_array($values) || (isset($values['value']) || isset($values['@value']))) {
                 $values = [$values];
             }
 
             // Validate against template if provided
-            if ($templateId !== null && !isset($templateProperties[$term])) {
-                trigger_error("Term '{$term}' not in template {$templateId}", E_USER_WARNING);
+            if (null !== $templateId && !isset($templateProperties[$term])) {
+                \trigger_error("Term '{$term}' not in template {$templateId}", E_USER_WARNING);
                 continue;
             }
 
@@ -774,7 +761,7 @@ final class OmekaClient
     private function search(string $resource, array $query = []): SearchResult
     {
         $response = $this->httpClient->request('GET', "{$this->apiUrl}/{$resource}", [
-            'query' => array_merge($this->authQuery(), $query),
+            'query' => \array_merge($this->authQuery(), $query),
         ]);
 
         $headers = $response->getHeaders();
@@ -799,10 +786,7 @@ final class OmekaClient
             return $response->toArray();
         } catch (ClientExceptionInterface $exception) {
             $details = $this->formatErrorDetails($exception->getResponse()->getContent(false));
-            throw new OmekaApiException(
-                sprintf('Omeka API POST %s failed: %s', $endpoint, $details),
-                previous: $exception,
-            );
+            throw new OmekaApiException(\sprintf('Omeka API POST %s failed: %s', $endpoint, $details), previous: $exception);
         }
     }
 
@@ -811,12 +795,12 @@ final class OmekaClient
         $this->requireAuth();
 
         $formFields = [
-            'data' => json_encode($payload),
+            'data' => \json_encode($payload),
         ];
 
         foreach ($mediaFiles as $index => $file) {
-            $path = is_array($file) ? $file['path'] : $file;
-            $filename = is_array($file) ? ($file['title'] ?? basename($path)) : basename($path);
+            $path = \is_array($file) ? $file['path'] : $file;
+            $filename = \is_array($file) ? ($file['title'] ?? \basename($path)) : \basename($path);
 
             $formFields["file[{$index}]"] = DataPart::fromPath($path, $filename);
         }
@@ -855,20 +839,20 @@ final class OmekaClient
 
     private function formatErrorDetails(?string $content): string
     {
-        if (!is_string($content) || trim($content) === '') {
+        if (!\is_string($content) || '' === \trim($content)) {
             return 'empty response body';
         }
 
-        $decoded = json_decode($content, true);
-        if (!is_array($decoded)) {
+        $decoded = \json_decode($content, true);
+        if (!\is_array($decoded)) {
             return $content;
         }
 
         if (isset($decoded['errors'])) {
-            return json_encode($decoded['errors']) ?: $content;
+            return \json_encode($decoded['errors']) ?: $content;
         }
 
-        if (isset($decoded['message']) && is_string($decoded['message'])) {
+        if (isset($decoded['message']) && \is_string($decoded['message'])) {
             return $decoded['message'];
         }
 
@@ -877,7 +861,7 @@ final class OmekaClient
 
     private function authQuery(): array
     {
-        if ($this->keyIdentity === null || $this->keyCredential === null) {
+        if (null === $this->keyIdentity || null === $this->keyCredential) {
             return [];
         }
 
@@ -889,18 +873,15 @@ final class OmekaClient
 
     private function requireAuth(): void
     {
-        if ($this->keyIdentity === null || $this->keyCredential === null) {
+        if (null === $this->keyIdentity || null === $this->keyCredential) {
             $base = $this->apiUrl;
-            if (str_ends_with($base, '/api')) {
-                $base = substr($base, 0, -4);
+            if (\str_ends_with($base, '/api')) {
+                $base = \substr($base, 0, -4);
             }
 
-            $adminUrl = $base . '/admin/user/1/edit#edit-keys';
+            $adminUrl = $base.'/admin/user/1/edit#edit-keys';
 
-            throw new OmekaApiException(
-                'Authentication required. Configure key_identity and key_credential for the active Omeka client. ' .
-                'Create an API key in the Omeka UI: ' . $adminUrl
-            );
+            throw new OmekaApiException('Authentication required. Configure key_identity and key_credential for the active Omeka client. Create an API key in the Omeka UI: '.$adminUrl);
         }
     }
 
@@ -910,11 +891,11 @@ final class OmekaClient
 
         foreach ($values as $value) {
             // Simple string value
-            if (is_string($value) || is_int($value)) {
+            if (\is_string($value) || \is_int($value)) {
                 $value = ['value' => (string) $value];
             }
 
-            if (!is_array($value)) {
+            if (!\is_array($value)) {
                 continue;
             }
 
@@ -922,8 +903,8 @@ final class OmekaClient
             $type = $value['type'] ?? $templateDef['types'][0] ?? 'literal';
 
             // Validate type against template
-            if ($templateDef !== null && !in_array($type, $templateDef['types'], true)) {
-                trigger_error("Type '{$type}' not allowed for this property", E_USER_WARNING);
+            if (null !== $templateDef && !\in_array($type, $templateDef['types'], true)) {
+                \trigger_error("Type '{$type}' not allowed for this property", E_USER_WARNING);
                 continue;
             }
 

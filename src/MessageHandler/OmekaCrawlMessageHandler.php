@@ -12,11 +12,6 @@ use Survos\OmekaBundle\Event\OmekaCrawlItemEvent;
 use Survos\OmekaBundle\Message\OmekaCrawlMessage;
 use Symfony\Component\Messenger\Attribute\AsMessageHandler;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
-use function getcwd;
-use function is_file;
-use function rtrim;
-use function sprintf;
-use function str_replace;
 
 /**
  * Handles OmekaCrawlMessage: crawls a public Omeka-S site and writes a JSONL file.
@@ -78,7 +73,7 @@ final class OmekaCrawlMessageHandler
                 $this->dispatcher->dispatch($event);
 
                 if ($event->skip) {
-                    $index++;
+                    ++$index;
                     continue;
                 }
 
@@ -86,7 +81,7 @@ final class OmekaCrawlMessageHandler
                 $tokenCode = isset($raw['o:id']) ? (string) $raw['o:id'] : null;
                 $writer->write($event->row, $tokenCode);
 
-                $index++;
+                ++$index;
             }
 
             $writer->finish();
@@ -103,25 +98,25 @@ final class OmekaCrawlMessageHandler
 
     private function resolveOutputPath(OmekaCrawlMessage $message): string
     {
-        if ($message->outputPath !== null) {
+        if (null !== $message->outputPath) {
             return $message->outputPath;
         }
 
         $slug = $this->crawler->siteSlug($message->siteUrl);
-        $setLabel = $message->itemSetId !== null
-            ? sprintf('set_%d', $message->itemSetId)
+        $setLabel = null !== $message->itemSetId
+            ? \sprintf('set_%d', $message->itemSetId)
             : 'all';
 
-        $filename = sprintf('%s_%s.jsonl', str_replace('.', '_', $slug), $setLabel);
+        $filename = \sprintf('%s_%s.jsonl', \str_replace('.', '_', $slug), $setLabel);
 
-        $dir = $message->outputDir ?? (string) getcwd();
+        $dir = $message->outputDir ?? (string) \getcwd();
 
-        return rtrim($dir, '/') . '/' . $filename;
+        return \rtrim($dir, '/').'/'.$filename;
     }
 
     private function isComplete(string $outputPath): bool
     {
-        if (!is_file($outputPath)) {
+        if (!\is_file($outputPath)) {
             return false;
         }
 

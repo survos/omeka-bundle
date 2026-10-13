@@ -15,7 +15,8 @@ readonly class Media
         public array $thumbnailUrls,
         public array $properties,
         public array $rawData,
-    ) {}
+    ) {
+    }
 
     public static function fromArray(array $data): self
     {
@@ -35,11 +36,11 @@ readonly class Media
     {
         $properties = [];
         $skip = ['@context', '@id', '@type', 'o:id', 'o:is_public', 'o:owner',
-                 'o:resource_class', 'o:resource_template', 'o:thumbnail',
-                 'o:created', 'o:modified', 'o:item', 'o:media_type', 'o:ingester',
-                 'o:renderer', 'o:source', 'o:original_url', 'o:sha256', 'o:size',
-                 'o:filename', 'o:lang', 'o:alt_text', 'o:position', 'thumbnail_display_urls',
-                 'data'];
+            'o:resource_class', 'o:resource_template', 'o:thumbnail',
+            'o:created', 'o:modified', 'o:item', 'o:media_type', 'o:ingester',
+            'o:renderer', 'o:source', 'o:original_url', 'o:sha256', 'o:size',
+            'o:filename', 'o:lang', 'o:alt_text', 'o:position', 'thumbnail_display_urls',
+            'data'];
 
         foreach ($data as $key => $value) {
             if (in_array($key, $skip, true)) {

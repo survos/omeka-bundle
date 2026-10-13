@@ -5,25 +5,6 @@ declare(strict_types=1);
 namespace Survos\OmekaBundle\Crawler;
 
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-use function array_filter;
-use function array_values;
-use function count;
-use function explode;
-use function implode;
-use function in_array;
-use function is_string;
-use function preg_match;
-use function preg_match_all;
-use function preg_replace;
-use function rtrim;
-use function sprintf;
-use function str_contains;
-use function str_replace;
-use function strip_tags;
-use function strlen;
-use function strpos;
-use function substr;
-use function trim;
 
 /**
  * Scrapes the official Omeka Classic and Omeka S site directories from omeka.org
@@ -44,7 +25,7 @@ use function trim;
 final class OmekaDirectoryParser
 {
     private const CLASSIC_DIRECTORY_URL = 'https://omeka.org/classic/directory/';
-    private const S_DIRECTORY_URL       = 'https://omeka.org/s/directory/';
+    private const S_DIRECTORY_URL = 'https://omeka.org/s/directory/';
 
     /** @var array<string> Internal omeka.org/google/font domains to skip when extracting site URLs */
     private const SKIP_HOSTS = [
@@ -121,14 +102,15 @@ final class OmekaDirectoryParser
      * optional description text and sub-lists for plugins/modules.
      *
      * @param 'classic'|'s' $type
+     *
      * @return list<array{name: string, url: string, type: 'classic'|'s', description: string, plugins: list<string>}>
      */
     private function parseListItems(string $html, string $type): array
     {
         // Isolate the main content <div> to avoid nav links polluting results
-        if (preg_match('#<div[^>]+id=["\']content["\'][^>]*>(.*)</div>\s*</div>\s*<footer#si', $html, $m)) {
+        if (\preg_match('#<div[^>]+id=["\']content["\'][^>]*>(.*)</div>\s*</div>\s*<footer#si', $html, $m)) {
             $content = $m[1];
-        } elseif (preg_match('#<div[^>]+class=["\']wrapper["\'][^>]*>(.*?)</div>\s*<footer#si', $html, $m)) {
+        } elseif (\preg_match('#<div[^>]+class=["\']wrapper["\'][^>]*>(.*?)</div>\s*<footer#si', $html, $m)) {
             $content = $m[1];
         } else {
             $content = $html;
@@ -140,17 +122,17 @@ final class OmekaDirectoryParser
 
         // Split on <li> and process each chunk
         $parts = preg_split('#<li(?:\s[^>]*)?>|</li>#i', $content);
-        if ($parts === false || count($parts) < 2) {
+        if (false === $parts || \count($parts) < 2) {
             return [];
         }
 
         foreach ($parts as $i => $chunk) {
-            if ($i === 0) {
+            if (0 === $i) {
                 continue; // preamble before first <li>
             }
 
-            $record = $this->parseListItem(trim($chunk), $type);
-            if ($record !== null) {
+            $record = $this->parseListItem(\trim($chunk), $type);
+            if (null !== $record) {
                 $items[] = $record;
             }
         }
@@ -163,17 +145,18 @@ final class OmekaDirectoryParser
      * look like a site entry.
      *
      * @param 'classic'|'s' $type
+     *
      * @return array{name: string, url: string, type: 'classic'|'s', description: string, plugins: list<string>}|null
      */
     private function parseListItem(string $chunk, string $type): ?array
     {
         // Must start with an anchor tag pointing to an external http URL
-        if (!preg_match('#^\s*<a\s+href="(https?://[^"]+)"[^>]*>([^<]+)</a>#i', $chunk, $m)) {
+        if (!\preg_match('#^\s*<a\s+href="(https?://[^"]+)"[^>]*>([^<]+)</a>#i', $chunk, $m)) {
             return null;
         }
 
-        $url  = trim($m[1]);
-        $name = trim(strip_tags($m[2]));
+        $url = \trim($m[1]);
+        $name = \trim(\strip_tags($m[2]));
 
         // Skip omeka.org internal/navigation links
         if ($this->isInternalUrl($url)) {
@@ -181,20 +164,20 @@ final class OmekaDirectoryParser
         }
 
         // Must look like a real site name (not a lone punctuation or nav label)
-        if (strlen($name) < 3 || in_array($name, ['Forums', 'Github', 'GitHub', 'Omeka.net'], true)) {
+        if (\strlen($name) < 3 || \in_array($name, ['Forums', 'Github', 'GitHub', 'Omeka.net'], true)) {
             return null;
         }
 
         // For Omeka S, strip sub-site path to get the installation root
         // e.g. https://exhibits.lib.utah.edu/s/1918-flu-pandemic-in-utah/page/welcome
         //   -> https://exhibits.lib.utah.edu
-        $siteUrl = $type === 's' ? $this->resolveInstallationRoot($url) : $this->resolveClassicRoot($url);
+        $siteUrl = 's' === $type ? $this->resolveInstallationRoot($url) : $this->resolveClassicRoot($url);
 
         // Extract description: text after the first </a>, before any nested <ul>
-        $afterLink = substr($chunk, strpos($chunk, '</a>') + 4);
-        $descRaw   = preg_replace('#<ul.*#si', '', $afterLink) ?? '';
-        $desc      = trim(strip_tags($descRaw));
-        $desc      = preg_replace('#\s+#', ' ', $desc) ?? $desc;
+        $afterLink = \substr($chunk, \strpos($chunk, '</a>') + 4);
+        $descRaw = \preg_replace('#<ul.*#si', '', $afterLink) ?? '';
+        $desc = \trim(\strip_tags($descRaw));
+        $desc = \preg_replace('#\s+#', ' ', $desc) ?? $desc;
         // Strip leading punctuation like ". " or ", "
         $desc = ltrim($desc, " \t\n\r\0\x0B.,;:-");
 
@@ -202,12 +185,12 @@ final class OmekaDirectoryParser
         $plugins = $this->extractPluginList($chunk);
 
         return [
-            'name'        => $name,
-            'url'         => $siteUrl,
-            'listedUrl'   => $url,  // original URL from the directory listing
-            'type'        => $type,
-            'description' => trim($desc),
-            'plugins'     => $plugins,
+            'name' => $name,
+            'url' => $siteUrl,
+            'listedUrl' => $url,  // original URL from the directory listing
+            'type' => $type,
+            'description' => \trim($desc),
+            'plugins' => $plugins,
         ];
     }
 
@@ -226,16 +209,16 @@ final class OmekaDirectoryParser
     private function resolveInstallationRoot(string $url): string
     {
         // Pattern: strip everything from /s/<slug> onward
-        if (preg_match('#^(https?://[^/]+(?:/[^/]+)*?)/s/[^/]+#i', $url, $m)) {
-            return rtrim($m[1], '/');
+        if (\preg_match('#^(https?://[^/]+(?:/[^/]+)*?)/s/[^/]+#i', $url, $m)) {
+            return \rtrim($m[1], '/');
         }
 
         // Pattern: strip /page/ paths
-        if (preg_match('#^(https?://[^/]+(?:/[^/]+)*?)/page/#i', $url, $m)) {
-            return rtrim($m[1], '/');
+        if (\preg_match('#^(https?://[^/]+(?:/[^/]+)*?)/page/#i', $url, $m)) {
+            return \rtrim($m[1], '/');
         }
 
-        return rtrim($url, '/');
+        return \rtrim($url, '/');
     }
 
     /**
@@ -252,13 +235,13 @@ final class OmekaDirectoryParser
         static $classicPaths = ['/items/', '/collections/', '/exhibits/', '/files/', '/tags/', '/show/'];
 
         foreach ($classicPaths as $path) {
-            $pos = strpos($url, $path);
-            if ($pos !== false) {
-                return rtrim(substr($url, 0, $pos), '/');
+            $pos = \strpos($url, $path);
+            if (false !== $pos) {
+                return \rtrim(\substr($url, 0, $pos), '/');
             }
         }
 
-        return rtrim($url, '/');
+        return \rtrim($url, '/');
     }
 
     /**
@@ -269,19 +252,19 @@ final class OmekaDirectoryParser
     private function extractPluginList(string $chunk): array
     {
         // Look for "Plugins:" or "Modules:" followed by text content
-        if (!preg_match('#(?:Plugins?|Modules?)\s*:\s*(.*?)(?:</ul>|$)#si', $chunk, $m)) {
+        if (!\preg_match('#(?:Plugins?|Modules?)\s*:\s*(.*?)(?:</ul>|$)#si', $chunk, $m)) {
             return [];
         }
 
-        $raw = strip_tags($m[1]);
+        $raw = \strip_tags($m[1]);
         // Split on comma or semicolon
         $parts = preg_split('#[,;]+#', $raw) ?: [];
 
         $plugins = [];
         foreach ($parts as $part) {
-            $clean = trim(preg_replace('#\s+#', ' ', $part) ?? $part);
-            $clean = trim($clean, " \t\n\r\0\x0B.,;:-()[]");
-            if ($clean !== '' && strlen($clean) > 1 && strlen($clean) < 80) {
+            $clean = \trim(\preg_replace('#\s+#', ' ', $part) ?? $part);
+            $clean = \trim($clean, " \t\n\r\0\x0B.,;:-()[]");
+            if ('' !== $clean && \strlen($clean) > 1 && \strlen($clean) < 80) {
                 $plugins[] = $clean;
             }
         }
@@ -292,7 +275,7 @@ final class OmekaDirectoryParser
     private function isInternalUrl(string $url): bool
     {
         foreach (self::SKIP_HOSTS as $host) {
-            if (str_contains($url, $host)) {
+            if (\str_contains($url, $host)) {
                 return true;
             }
         }

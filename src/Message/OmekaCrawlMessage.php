@@ -26,7 +26,7 @@ final readonly class OmekaCrawlMessage
      * @param int|null    $itemSetId  Restrict crawl to this item set; null = all items
      * @param string|null $outputPath Destination .jsonl file path.
      *                                When null, derived automatically:
-     *                                  {slug}_{itemSetId}.jsonl  (or {slug}_all.jsonl)
+     *                                {slug}_{itemSetId}.jsonl  (or {slug}_all.jsonl)
      * @param string|null $outputDir  Directory for auto-derived filenames. Defaults to CWD.
      * @param bool        $normalize  Flatten JSON-LD to a sparse, Meilisearch-ready structure
      * @param int         $perPage    Items per API request (1–100)

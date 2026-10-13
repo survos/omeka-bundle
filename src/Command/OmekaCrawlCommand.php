@@ -6,17 +6,13 @@ namespace Survos\OmekaBundle\Command;
 
 use Survos\OmekaBundle\Crawler\OmekaPublicCrawler;
 use Survos\OmekaBundle\Message\OmekaCrawlMessage;
-use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Argument;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\TransportNamesStamp;
-use function array_map;
-use function count;
-use function is_string;
-use function sprintf;
 
 /**
  * Crawl a public Omeka-S site and export items as JSONL.
@@ -96,7 +92,7 @@ final class OmekaCrawlCommand
         // ── Crawl: determine which item sets to process ───────────────────────
         $itemSetIds = $this->resolveItemSetIds($io, $url, $itemSet);
 
-        if ($itemSetIds === []) {
+        if ([] === $itemSetIds) {
             // Crawl all items (no item-set filter)
             $itemSetIds = [null];
         }
@@ -116,22 +112,22 @@ final class OmekaCrawlCommand
             );
 
             $stamps = [];
-            if (is_string($transport) && $transport !== '') {
+            if (\is_string($transport) && '' !== $transport) {
                 $stamps[] = new TransportNamesStamp($transport);
             }
 
             $this->bus->dispatch($message, $stamps);
-            $dispatched++;
+            ++$dispatched;
 
-            $label = $setId !== null ? sprintf('item set %d', $setId) : 'all items';
-            $io->writeln(sprintf(
+            $label = null !== $setId ? \sprintf('item set %d', $setId) : 'all items';
+            $io->writeln(\sprintf(
                 'Dispatched crawl for <info>%s</info> → %s',
                 $label,
-                $transport !== null ? sprintf('<comment>transport: %s</comment>', $transport) : 'sync',
+                null !== $transport ? \sprintf('<comment>transport: %s</comment>', $transport) : 'sync',
             ));
         }
 
-        $io->success(sprintf('Dispatched %d crawl message(s).', $dispatched));
+        $io->success(\sprintf('Dispatched %d crawl message(s).', $dispatched));
 
         return Command::SUCCESS;
     }
@@ -142,17 +138,18 @@ final class OmekaCrawlCommand
 
     private function doListSites(SymfonyStyle $io, string $url): int
     {
-        $io->section(sprintf('Sites at %s', $url));
+        $io->section(\sprintf('Sites at %s', $url));
 
         $result = $this->crawler->getSites($url);
         $sites = $result['results'];
 
-        if ($sites === []) {
+        if ([] === $sites) {
             $io->warning('No public sites found.');
+
             return Command::SUCCESS;
         }
 
-        $rows = array_map(static function (array $site): array {
+        $rows = \array_map(static function (array $site): array {
             return [
                 $site['o:id'] ?? '',
                 $site['o:title'] ?? '',
@@ -161,7 +158,7 @@ final class OmekaCrawlCommand
             ];
         }, $sites);
 
-        $io->writeln(sprintf('Total: <info>%d</info> site(s)', $result['total']));
+        $io->writeln(\sprintf('Total: <info>%d</info> site(s)', $result['total']));
         $io->table(['ID', 'Title', 'Slug', 'URL'], $rows);
 
         return Command::SUCCESS;
@@ -169,19 +166,21 @@ final class OmekaCrawlCommand
 
     private function doListCollections(SymfonyStyle $io, string $url): int
     {
-        $io->section(sprintf('Item sets (collections) at %s', $url));
+        $io->section(\sprintf('Item sets (collections) at %s', $url));
 
         $result = $this->crawler->getItemSets($url);
         $sets = $result['results'];
 
-        if ($sets === []) {
+        if ([] === $sets) {
             $io->warning('No public item sets found.');
+
             return Command::SUCCESS;
         }
 
-        $rows = array_map(static function (array $set): array {
+        $rows = \array_map(static function (array $set): array {
             // o:items contains a link like {"@id": ".../api/items?item_set_id=5"}
             $itemsLink = $set['o:items']['@id'] ?? '';
+
             return [
                 $set['o:id'] ?? '',
                 $set['o:title'] ?? '',
@@ -189,7 +188,7 @@ final class OmekaCrawlCommand
             ];
         }, $sets);
 
-        $io->writeln(sprintf('Total: <info>%d</info> item set(s)', $result['total']));
+        $io->writeln(\sprintf('Total: <info>%d</info> item set(s)', $result['total']));
         $io->table(['ID', 'Title', 'Items URL'], $rows);
 
         return Command::SUCCESS;
@@ -197,7 +196,7 @@ final class OmekaCrawlCommand
 
     private function doDryRun(SymfonyStyle $io, string $url, ?int $itemSet, int $perPage): int
     {
-        $io->section(sprintf('Dry run: counting items at %s', $url));
+        $io->section(\sprintf('Dry run: counting items at %s', $url));
 
         $generator = $this->crawler->crawlItems($url, $itemSet, $perPage);
 
@@ -206,13 +205,13 @@ final class OmekaCrawlCommand
 
         $count = 0;
         foreach ($generator as $item) {
-            $count++;
+            ++$count;
             $progress->advance();
         }
 
         $progress->finish();
         $io->newLine();
-        $io->success(sprintf('Found %d item(s) — nothing written (dry run).', $count));
+        $io->success(\sprintf('Found %d item(s) — nothing written (dry run).', $count));
 
         return Command::SUCCESS;
     }
@@ -228,7 +227,7 @@ final class OmekaCrawlCommand
      */
     private function resolveItemSetIds(SymfonyStyle $io, string $url, ?int $itemSet): array
     {
-        if ($itemSet !== null) {
+        if (null !== $itemSet) {
             return [$itemSet];
         }
 

@@ -4,17 +4,12 @@ declare(strict_types=1);
 
 namespace Survos\OmekaBundle\Command;
 
-use RuntimeException;
 use Survos\OmekaBundle\Client\OmekaClient;
 use Symfony\Component\Console\Attribute\Argument;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Attribute\Option;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use function is_string;
-use function sprintf;
-use function str_ends_with;
-use function substr;
 
 #[AsCommand('omeka:sites:create', 'Create an Omeka site')]
 final class OmekaCreateSiteCommand
@@ -40,19 +35,19 @@ final class OmekaCreateSiteCommand
         $theme ??= $io->ask('Theme name', 'default');
         $isPublic ??= $io->confirm('Make site public?', true);
 
-        if (!is_string($slug) || $slug === '') {
-            throw new RuntimeException('Site slug is required.');
+        if (!\is_string($slug) || '' === $slug) {
+            throw new \RuntimeException('Site slug is required.');
         }
-        if (!is_string($title) || $title === '') {
-            throw new RuntimeException('Site title is required.');
+        if (!\is_string($title) || '' === $title) {
+            throw new \RuntimeException('Site title is required.');
         }
 
         $site = $this->omeka->createSite($slug, $title, $theme, $isPublic);
 
         $siteId = $site['o:id'] ?? null;
-        $io->success(sprintf('Created site %s.', (string) $siteId));
-        $io->writeln(sprintf('Admin URL: %s', $this->adminSiteUrl((int) $siteId)));
-        $io->writeln(sprintf('Public URL: %s', $this->publicSiteUrl($slug)));
+        $io->success(\sprintf('Created site %s.', (string) $siteId));
+        $io->writeln(\sprintf('Admin URL: %s', $this->adminSiteUrl((int) $siteId)));
+        $io->writeln(\sprintf('Public URL: %s', $this->publicSiteUrl($slug)));
 
         return Command::SUCCESS;
     }
@@ -60,20 +55,20 @@ final class OmekaCreateSiteCommand
     private function adminSiteUrl(int $siteId): string
     {
         $base = $this->omeka->getApiUrl();
-        if (str_ends_with($base, '/api')) {
-            $base = substr($base, 0, -4);
+        if (\str_ends_with($base, '/api')) {
+            $base = \substr($base, 0, -4);
         }
 
-        return sprintf('%s/admin/site/%d', $base, $siteId);
+        return \sprintf('%s/admin/site/%d', $base, $siteId);
     }
 
     private function publicSiteUrl(string $slug): string
     {
         $base = $this->omeka->getApiUrl();
-        if (str_ends_with($base, '/api')) {
-            $base = substr($base, 0, -4);
+        if (\str_ends_with($base, '/api')) {
+            $base = \substr($base, 0, -4);
         }
 
-        return sprintf('%s/s/%s', $base, $slug);
+        return \sprintf('%s/s/%s', $base, $slug);
     }
 }

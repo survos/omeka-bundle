@@ -14,7 +14,8 @@ readonly class ResourceTemplate
         public ?int $descriptionPropertyId,
         public array $properties,
         public array $rawData,
-    ) {}
+    ) {
+    }
 
     public static function fromArray(array $data): self
     {
@@ -32,7 +33,7 @@ readonly class ResourceTemplate
     public function getPropertyIds(): array
     {
         return array_map(
-            fn($p) => $p['o:property']['o:id'],
+            fn ($p) => $p['o:property']['o:id'],
             $this->properties
         );
     }
